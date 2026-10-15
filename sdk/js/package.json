@@ -1,0 +1,11 @@
+{
+  "name": "ke-farmer-hash-sdk",
+  "version": "1.0.0",
+  "description": "Kenyan Farmer Phone Number Normaliser and Keyed Hasher SDK",
+  "main": "hasher.js",
+  "scripts": {
+    "test": "node test_hasher.js"
+  },
+  "keywords": ["kenya", "farmer", "privacy", "hash", "hmac"],
+  "license": "Apache-2.0"
+}

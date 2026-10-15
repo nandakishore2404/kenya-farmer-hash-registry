@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: registry_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_secret_password
+      POSTGRES_DB: registry_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d registry_db"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+
+  registry:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: registry_app
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres_secret_password@db:5432/registry_db
+      SERVER_KEY: prod_server_secret_rekey_key_9876543210
+      ADMIN_KEY: admin_secret_management_key_xyz
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - .:/workspace
+
+volumes:
+  postgres_data:

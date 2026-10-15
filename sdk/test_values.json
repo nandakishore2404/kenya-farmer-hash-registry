@@ -1,0 +1,116 @@
+[
+  {
+    "input": "0712345678",
+    "normalized": "+254712345678",
+    "valid": true,
+    "description": "Standard 10-digit 07 Safaricom format"
+  },
+  {
+    "input": "0112345678",
+    "normalized": "+254112345678",
+    "valid": true,
+    "description": "Standard 10-digit 01 Airtel format"
+  },
+  {
+    "input": "254712345678",
+    "normalized": "+254712345678",
+    "valid": true,
+    "description": "12-digit format without leading plus"
+  },
+  {
+    "input": "+254712345678",
+    "normalized": "+254712345678",
+    "valid": true,
+    "description": "Standard international E.164 format with plus"
+  },
+  {
+    "input": "+254112345678",
+    "normalized": "+254112345678",
+    "valid": true,
+    "description": "International E.164 with 01 prefix"
+  },
+  {
+    "input": "712345678",
+    "normalized": "+254712345678",
+    "valid": true,
+    "description": "9 digits starting with 7"
+  },
+  {
+    "input": "112345678",
+    "normalized": "+254112345678",
+    "valid": true,
+    "description": "9 digits starting with 1"
+  },
+  {
+    "input": "0712-345-678",
+    "normalized": "+254712345678",
+    "valid": true,
+    "description": "Dashes formatting"
+  },
+  {
+    "input": "+254 (712) 345 678",
+    "normalized": "+254712345678",
+    "valid": true,
+    "description": "Spaces and parentheses"
+  },
+  {
+    "input": "0712.345.678",
+    "normalized": "+254712345678",
+    "valid": true,
+    "description": "Dots formatting"
+  },
+  {
+    "input": "  +254 712 345 678  ",
+    "normalized": "+254712345678",
+    "valid": true,
+    "description": "Leading and trailing whitespace"
+  },
+  {
+    "input": "254112345678",
+    "normalized": "+254112345678",
+    "valid": true,
+    "description": "254 with 1 prefix"
+  },
+  {
+    "input": "0700000000",
+    "normalized": "+254700000000",
+    "valid": true,
+    "description": "Edge minimum valid digits with 07"
+  },
+  {
+    "input": "0799999999",
+    "normalized": "+254799999999",
+    "valid": true,
+    "description": "Edge maximum valid digits with 07"
+  },
+  {
+    "input": "0612345678",
+    "valid": false,
+    "description": "Invalid prefix 06 (only 7 or 1 allowed in Kenya mobile)"
+  },
+  {
+    "input": "071234567",
+    "valid": false,
+    "description": "Too short (8 digits)"
+  },
+  {
+    "input": "071234567890",
+    "valid": false,
+    "description": "Too long (11 digits)"
+  },
+  {
+    "input": "abcdefghij",
+    "valid": false,
+    "description": "Non-numeric characters"
+  },
+  {
+    "input": "+12025550123",
+    "valid": false,
+    "description": "Non-Kenyan country code (US)"
+  },
+  {
+    "input": "+254201234567",
+    "valid": false,
+    "description": "Kenyan landline prefix (020) not mobile 7/1"
+  }
+]

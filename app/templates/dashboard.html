@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kenya Farmer Hash Registry | Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --primary: #059669;
+      --primary-light: #d1fae5;
+      --accent: #0284c7;
+      --border: #e2e8f0;
+      --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+      --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-family);
+      background-color: var(--bg);
+      color: var(--text-main);
+      padding: 24px;
+      line-height: 1.5;
+    }
+
+    .container {
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+
+    header {
+      margin-bottom: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 16px;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #065f46;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .badge-privacy {
+      background: var(--primary-light);
+      color: var(--primary);
+      padding: 4px 12px;
+      border-radius: 9999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      border: 1px solid #a7f3d0;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .metric-card {
+      background: var(--card-bg);
+      padding: 20px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+    }
+
+    .metric-card h3 {
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .metric-card .value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .metric-card .subtext {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .charts-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+      gap: 20px;
+      margin-bottom: 24px;
+    }
+
+    .chart-card {
+      background: var(--card-bg);
+      padding: 20px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      min-height: 320px;
+    }
+
+    .chart-card h2 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: #1e293b;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .chart-card .k-tag {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-weight: normal;
+    }
+
+    .canvas-container {
+      position: relative;
+      height: 260px;
+      width: 100%;
+    }
+
+    footer {
+      text-align: center;
+      margin-top: 32px;
+      padding-top: 16px;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>Kenya Agricultural Advisory Pilot</h1>
+        <p style="color: var(--text-muted); font-size: 0.95rem;">Cross-Partner Farmer De-duplication Registry (Zero-Knowledge Hash Store)</p>
+      </div>
+      <div class="badge-privacy">
+        Privacy Preserved: Counts &lt; 5 Suppressed
+      </div>
+    </header>
+
+    <!-- Top Key Metrics -->
+    <div class="metric-grid">
+      <div class="metric-card">
+        <h3>Total Partner Registrations</h3>
+        <div class="value">{{ total_registrations }}</div>
+        <div class="subtext">Cumulative partner registrations received</div>
+      </div>
+      <div class="metric-card">
+        <h3>Unique Verified Farmers</h3>
+        <div class="value" style="color: #059669;">{{ unique_farmers }}</div>
+        <div class="subtext">Distinct farmers de-duplicated across all partners</div>
+      </div>
+      <div class="metric-card">
+        <h3>Cross-Partner Overlap Rate</h3>
+        <div class="value" style="color: #0284c7;">{{ overlap_rate }}%</div>
+        <div class="subtext">1 - (Unique Farmers / Total Registrations)</div>
+      </div>
+    </div>
+
+    <!-- Analytics Charts -->
+    <div class="charts-grid">
+      <!-- Gender Breakdown -->
+      <div class="chart-card">
+        <h2>Unique Farmers by Gender <span class="k-tag">k &ge; {{ threshold }}</span></h2>
+        <div class="canvas-container">
+          <canvas id="genderChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Age Band Breakdown -->
+      <div class="chart-card">
+        <h2>Unique Farmers by Age Band <span class="k-tag">k &ge; {{ threshold }}</span></h2>
+        <div class="canvas-container">
+          <canvas id="ageChart"></canvas>
+        </div>
+      </div>
+
+      <!-- County Breakdown -->
+      <div class="chart-card">
+        <h2>Unique Farmers by County Code <span class="k-tag">k &ge; {{ threshold }}</span></h2>
+        <div class="canvas-container">
+          <canvas id="countyChart"></canvas>
+        </div>
+      </div>
+
+      <!-- First-to-Onboard Credit -->
+      <div class="chart-card">
+        <h2>First-to-Onboard Credit per Partner <span class="k-tag">Original Discovery</span></h2>
+        <div class="canvas-container">
+          <canvas id="creditChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Weekly Trend (Spans Full Width if space allows) -->
+      <div class="chart-card" style="grid-column: 1 / -1;">
+        <h2>Weekly Onboarding Trend <span class="k-tag">Active Registrations</span></h2>
+        <div class="canvas-container" style="height: 280px;">
+          <canvas id="trendChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      Farmer Hash Registry Prototype &bull; Zero Phone / Zero Name Retention &bull; Client-side HMAC-SHA256 & Server-side Re-keying
+    </footer>
+  </div>
+
+  <script>
+    const genderData = {{ gender_counts | tojson }};
+    const ageData = {{ age_counts | tojson }};
+    const countyData = {{ county_counts | tojson }};
+    const creditData = {{ first_credit | tojson }};
+    const trendData = {{ weekly_trend | tojson }};
+
+    // 1. Gender Doughnut Chart
+    new Chart(document.getElementById('genderChart'), {
+      type: 'doughnut',
+      data: {
+        labels: Object.keys(genderData),
+        datasets: [{
+          data: Object.values(genderData),
+          backgroundColor: ['#059669', '#0284c7', '#94a3b8']
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom' } }
+      }
+    });
+
+    // 2. Age Band Bar Chart
+    new Chart(document.getElementById('ageChart'), {
+      type: 'bar',
+      data: {
+        labels: Object.keys(ageData),
+        datasets: [{
+          label: 'Farmers',
+          data: Object.values(ageData),
+          backgroundColor: '#0284c7'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: { y: { beginAtZero: true } },
+        plugins: { legend: { display: false } }
+      }
+    });
+
+    // 3. County Bar Chart
+    new Chart(document.getElementById('countyChart'), {
+      type: 'bar',
+      data: {
+        labels: Object.keys(countyData).map(c => 'County ' + c),
+        datasets: [{
+          label: 'Farmers',
+          data: Object.values(countyData),
+          backgroundColor: '#10b981'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: { y: { beginAtZero: true } },
+        plugins: { legend: { display: false } }
+      }
+    });
+
+    // 4. Partner First-to-Onboard Credit
+    new Chart(document.getElementById('creditChart'), {
+      type: 'bar',
+      data: {
+        labels: Object.keys(creditData),
+        datasets: [{
+          label: 'First-to-Onboard Credit',
+          data: Object.values(creditData),
+          backgroundColor: ['#6366f1', '#f59e0b', '#ec4899', '#8b5cf6']
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: { y: { beginAtZero: true } },
+        plugins: { legend: { display: false } }
+      }
+    });
+
+    // 5. Weekly Trend Line Chart
+    new Chart(document.getElementById('trendChart'), {
+      type: 'line',
+      data: {
+        labels: Object.keys(trendData).length ? Object.keys(trendData) : ['Current Week'],
+        datasets: [{
+          label: 'Farmers Onboarded',
+          data: Object.values(trendData).length ? Object.values(trendData) : [0],
+          borderColor: '#059669',
+          backgroundColor: 'rgba(5, 150, 105, 0.1)',
+          fill: true,
+          tension: 0.3
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: { y: { beginAtZero: true } },
+        plugins: { legend: { display: false } }
+      }
+    });
+  </script>
+</body>
+</html>

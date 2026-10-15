@@ -1,0 +1,64 @@
+# ── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Virtual environments ─────────────────────────────────────────────────────
+venv/
+.venv/
+env/
+ENV/
+
+# ── Secrets & local config ───────────────────────────────────────────────────
+.env
+*.env
+.env.*
+!.env.example
+
+# ── Databases (SQLite — generated at runtime) ────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+farmer_registry.db
+
+# ── Test / coverage artefacts ────────────────────────────────────────────────
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+*.log
+
+# ── Simulator runtime outputs ────────────────────────────────────────────────
+simulator/ground_truth.json
+simulator/report.md
+
+# ── Other project folders (not part of this registry codebase) ───────────────
+OAN-UI/
+50K PILOT/
+Claude/
+Claude outputs/
+diagram_assets/
+LLM Evaluation-20260828T124557Z-1-001/
+MOM/
+MOMs/
+OAN Kenya Cost Structure/
+oan-pest-detection-benchmark/
+OAN-Technical Toolkit/
+PPT/
+Project Documents/
+runs/
+sample_images_to_test/
+Scope Document-20260828T124743Z-1-001/
+SPRINT-3/
+Success Story Journaling-20260828T124721Z-1-001/
+
+# ── IDE & OS ─────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.DS_Store
+Thumbs.db
