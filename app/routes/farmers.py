@@ -17,13 +17,13 @@ router = APIRouter(prefix="/v1/farmers", tags=["farmers"])
 
 HEX_64_REGEX = re.compile(r"^[a-fA-F0-9]{64}$")
 
-def parse_iso_datetime(dt_str: Optional[str]) -> datetime:
-    if not dt_str:
-        return datetime.now(timezone.utc)
+def parse_iso_datetime(dt_str: Optional[str]) -> Optional[datetime]:
+    if not dt_str or not dt_str.strip():
+        return None
     try:
-        return datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+        return datetime.fromisoformat(dt_str.strip().replace("Z", "+00:00"))
     except Exception:
-        return datetime.now(timezone.utc)
+        raise ValueError("Invalid ISO datetime format")
 
 def process_farmer_registration(
     db: Session,
@@ -230,7 +230,14 @@ async def upload_farmers_csv(
             rows_rejected += 1
             continue
         
-        dt = parse_iso_datetime(row_onboarded_at)
+        if row_onboarded_at and row_onboarded_at.strip():
+            try:
+                dt = parse_iso_datetime(row_onboarded_at)
+            except ValueError:
+                rows_rejected += 1
+                continue
+        else:
+            dt = None
         
         # Check in-file repeat
         if row_hash in seen_in_batch:
