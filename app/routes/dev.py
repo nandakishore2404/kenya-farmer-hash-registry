@@ -20,11 +20,15 @@ def check_development_mode():
 def get_dev_console(request: Request):
     check_development_mode()
     from app.routes.dashboard import templates
-    return templates.TemplateResponse("dev_console.html", {
-        "request": request,
-        "env": settings.ENV,
-        "pilot_start_date": settings.PILOT_START_DATE
-    })
+    return templates.TemplateResponse(
+        request=request,
+        name="dev_console.html",
+        context={
+            "env": settings.ENV,
+            "pilot_start_date": settings.PILOT_START_DATE
+        }
+    )
+
 
 @router.get("/unsuppressed-metrics")
 def get_unsuppressed_metrics(db: Session = Depends(get_db)):
@@ -56,14 +60,18 @@ def get_unsuppressed_metrics(db: Session = Depends(get_db)):
     )
     events = []
     for l in recent_links:
+        f_code = (l.farmer.hash_key[:12] + "...") if l.farmer else "unknown"
+
+        county = l.farmer.county_code if l.farmer else "-"
         events.append({
             "partner_id": l.partner_id,
-            "farmer_code": l.farmer_code[:12] + "...",
-            "county_code": l.county_code,
-            "onboarded_at": l.onboarded_at.isoformat() if l.onboarded_at else None,
+            "farmer_code": f_code,
+            "county_code": county,
+            "onboarded_at": l.linked_at.isoformat() if l.linked_at else None,
             "received_at": l.received_at.isoformat() if l.received_at else None,
             "status": l.status
         })
+
 
     return {
         "total_unique_farmers": total_farmers,
