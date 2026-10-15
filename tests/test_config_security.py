@@ -41,6 +41,7 @@ def test_production_valid_keys_succeeds(monkeypatch):
     monkeypatch.setenv("ADMIN_KEY", "secure_admin_key_0123456789abcdef0123456789abcdef")
     monkeypatch.setenv("DATABASE_URL", "postgresql://postgres:pass@localhost:5432/db")
     monkeypatch.setenv("DASHBOARD_PASSWORD", "dashboard_secure_pass_123")
+    monkeypatch.setenv("SEED_TEST_PARTNERS", "false")
     
     s = Settings()
     s.validate_production_security()

@@ -5,6 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 # Use a test database
+os.environ["ENV"] = "development"
 os.environ["DATABASE_URL"] = "sqlite:///./test_registry.db"
 os.environ["SERVER_KEY"] = "test_server_secret_rekey_key_abc123"
 os.environ["ADMIN_KEY"] = "test_admin_key_super_secret"

@@ -23,6 +23,8 @@ services:
       dockerfile: Dockerfile
     container_name: registry_app
     restart: unless-stopped
+    environment:
+      ENV: production
     env_file:
       - .env
     ports:

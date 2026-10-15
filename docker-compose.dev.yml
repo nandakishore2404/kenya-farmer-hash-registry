@@ -6,5 +6,7 @@ services:
       - "5432:5432"
 
   registry:
+    environment:
+      ENV: development
     volumes:
       - .:/workspace
