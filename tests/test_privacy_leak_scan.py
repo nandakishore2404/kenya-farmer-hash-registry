@@ -4,20 +4,17 @@ import json
 import pytest
 from app.database import SessionLocal, Base, engine
 from app.models import Farmer, PartnerLink, AuditLog, Partner
-from app.hashing import rekey_hash, compute_request_signature
-from sdk.python.hasher import hash_phone
+from app.hashing import rekey_hash
+from sdk.python.hasher import hash_phone, sign_request
 
 PHONE_REGEX = re.compile(r"(\+?254[71]\d{8}|0[71]\d{8})")
 PARTNER_KEY = "partner_shared_pilot_secret"
 ALPHA_KEY = "alpha_api_key_pilot_2026"
 
 def get_auth_headers(api_key: str, body: bytes) -> dict:
-    sig = compute_request_signature(api_key, body)
-    return {
-        "X-Partner-Key": api_key,
-        "X-Signature": sig,
-        "Content-Type": "application/json"
-    }
+    headers = sign_request(api_key, "POST", "/v1/farmers", "", body)
+    headers["Content-Type"] = "application/json"
+    return headers
 
 def test_database_privacy_leak_scan(client, db_session):
     """

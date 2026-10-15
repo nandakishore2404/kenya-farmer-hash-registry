@@ -35,10 +35,3 @@ def compute_request_signature_v2(
     canonical_str = f"{method.upper()}\n{path}\n{query}\n{timestamp}\n{nonce}\n{body_hash}"
     key = api_key.strip().encode("utf-8")
     return hmac.new(key, canonical_str.encode("utf-8"), hashlib.sha256).hexdigest()
-
-def compute_request_signature(api_key: str, body: bytes) -> str:
-    """
-    Computes legacy HMAC-SHA256 signature of request body using partner API key.
-    """
-    key = api_key.strip().encode("utf-8")
-    return hmac.new(key, body, hashlib.sha256).hexdigest()

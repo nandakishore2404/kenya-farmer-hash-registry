@@ -1,8 +1,8 @@
 import json
 import pytest
 from app.models import Partner
-from app.hashing import compute_request_signature, hash_api_key
-from sdk.python.hasher import hash_phone
+from app.hashing import hash_api_key
+from sdk.python.hasher import hash_phone, sign_request
 
 PARTNER_KEY = "partner_shared_pilot_secret"
 
@@ -17,12 +17,8 @@ def test_disabled_partner_rejected_with_401(client, db_session):
     body = json.dumps({"hash": h, "gender": "F", "age_band": "25-34", "county_code": "047"}).encode()
     
     api_key_b = "test_partner_b_api_key_2026"
-    sig = compute_request_signature(api_key_b, body)
-    headers = {
-        "X-Partner-Key": api_key_b,
-        "X-Signature": sig,
-        "Content-Type": "application/json"
-    }
+    headers = sign_request(api_key_b, "POST", "/v1/farmers", "", body)
+    headers["Content-Type"] = "application/json"
     
     res = client.post("/v1/farmers", content=body, headers=headers)
     assert res.status_code == 401

@@ -2,20 +2,16 @@ import json
 import requests
 import pytest
 from app.config import settings
-from app.hashing import compute_request_signature, rekey_hash
+from app.hashing import rekey_hash
 from app.models import Farmer, PartnerLink, AuditLog
-from sdk.python.hasher import hash_phone
+from sdk.python.hasher import hash_phone, sign_request
 
 PARTNER_KEY = "partner_shared_pilot_secret"
 ALPHA_KEY = "alpha_api_key_pilot_2026"
 BETA_KEY = "beta_api_key_pilot_2026"
 
-def get_auth_headers(api_key: str, body: bytes, content_type: str = "application/json") -> dict:
-    sig = compute_request_signature(api_key, body)
-    headers = {
-        "X-Partner-Key": api_key,
-        "X-Signature": sig
-    }
+def get_auth_headers(api_key: str, body: bytes, method: str = "POST", path: str = "/v1/farmers", content_type: str = "application/json") -> dict:
+    headers = sign_request(api_key=api_key, method=method, path=path, query="", body=body)
     if content_type:
         headers["Content-Type"] = content_type
     return headers
@@ -28,13 +24,17 @@ def test_auth_rejection(client):
     assert res.status_code == 401
     
     # 2. Unknown partner key -> 401
-    sig = compute_request_signature("fake_key", body)
-    res = client.post("/v1/farmers", content=body, headers={"X-Partner-Key": "fake_key", "X-Signature": sig, "Content-Type": "application/json"})
+    headers_fake = sign_request("fake_key", "POST", "/v1/farmers", "", body)
+    headers_fake["Content-Type"] = "application/json"
+    res = client.post("/v1/farmers", content=body, headers=headers_fake)
     assert res.status_code == 401
     assert "Unknown or invalid" in res.text
     
     # 3. Bad signature -> 401
-    res = client.post("/v1/farmers", content=body, headers={"X-Partner-Key": ALPHA_KEY, "X-Signature": "invalid_sig", "Content-Type": "application/json"})
+    headers_bad = sign_request(ALPHA_KEY, "POST", "/v1/farmers", "", body)
+    headers_bad["X-Signature"] = "invalid_sig"
+    headers_bad["Content-Type"] = "application/json"
+    res = client.post("/v1/farmers", content=body, headers=headers_bad)
     assert res.status_code == 401
     assert "Invalid request signature" in res.text
 
@@ -63,8 +63,9 @@ def test_farmer_registration_branches_and_idempotency(client, db_session):
     assert links[0].partner_id == "partner_alpha"
     assert links[0].status == "active"
     
-    # Branch 2: Idempotency (Partner Alpha sends the exact same farmer again)
-    res2 = client.post("/v1/farmers", content=body1, headers=headers_alpha)
+    # Branch 2: Idempotency (Partner Alpha sends the exact same farmer again with fresh request headers)
+    headers_alpha2 = get_auth_headers(ALPHA_KEY, body1)
+    res2 = client.post("/v1/farmers", content=body1, headers=headers_alpha2)
     assert res2.status_code == 200
     assert res2.json() == {"status": "accepted"}
     # No duplicate link created
@@ -89,7 +90,7 @@ def test_farmer_registration_branches_and_idempotency(client, db_session):
 def test_partner_summary_aggregates(client):
     # Partner Alpha summary
     body = b""
-    headers_alpha = get_auth_headers(ALPHA_KEY, body, content_type=None)
+    headers_alpha = get_auth_headers(ALPHA_KEY, body, method="GET", path="/v1/partners/me/summary", content_type=None)
     res = client.get("/v1/partners/me/summary", headers=headers_alpha)
     assert res.status_code == 200
     data = res.json()
@@ -99,7 +100,7 @@ def test_partner_summary_aggregates(client):
     assert data["already_known"] == 0
 
     # Partner Beta summary
-    headers_beta = get_auth_headers(BETA_KEY, body, content_type=None)
+    headers_beta = get_auth_headers(BETA_KEY, body, method="GET", path="/v1/partners/me/summary", content_type=None)
     res = client.get("/v1/partners/me/summary", headers=headers_beta)
     assert res.status_code == 200
     data_beta = res.json()
@@ -124,13 +125,8 @@ invalid_hash_string,F,18-24,019,2026-10-03T11:00:00
     
     req = requests.Request("POST", "http://testserver/v1/farmers:upload", files={"file": ("farmers.csv", file_bytes, "text/csv")})
     prep = req.prepare()
-    sig = compute_request_signature(ALPHA_KEY, prep.body)
-    
-    headers = {
-        "X-Partner-Key": ALPHA_KEY,
-        "X-Signature": sig,
-        "Content-Type": prep.headers["Content-Type"]
-    }
+    headers = sign_request(ALPHA_KEY, "POST", "/v1/farmers:upload", "", prep.body)
+    headers["Content-Type"] = prep.headers["Content-Type"]
     res = client.post("/v1/farmers:upload", content=prep.body, headers=headers)
     assert res.status_code == 200
     data = res.json()
@@ -146,7 +142,7 @@ def test_consent_withdrawal_and_cascade(client, db_session):
     
     # Currently farmer has 2 links: alpha and beta
     # Alpha withdraws consent
-    headers_alpha = get_auth_headers(ALPHA_KEY, b"", content_type=None)
+    headers_alpha = get_auth_headers(ALPHA_KEY, b"", method="DELETE", path=f"/v1/farmers/{h}", content_type=None)
     res1 = client.delete(f"/v1/farmers/{h}", headers=headers_alpha)
     assert res1.status_code == 200
     assert res1.json() == {"status": "accepted"}
@@ -156,7 +152,7 @@ def test_consent_withdrawal_and_cascade(client, db_session):
     assert f_after_alpha is not None
     
     # Beta withdraws consent
-    headers_beta = get_auth_headers(BETA_KEY, b"", content_type=None)
+    headers_beta = get_auth_headers(BETA_KEY, b"", method="DELETE", path=f"/v1/farmers/{h}", content_type=None)
     res2 = client.delete(f"/v1/farmers/{h}", headers=headers_beta)
     assert res2.status_code == 200
     

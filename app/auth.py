@@ -1,16 +1,14 @@
-import hmac
-from typing import Optional
-from fastapi import Header, HTTPException, Request, Depends, status
-from sqlalchemy.orm import Session
-from app.config import settings
-from app.database import get_db
-from app.models import Partner
-from app.hashing import hash_api_key, compute_request_signature
-
 import time
 from datetime import datetime, timezone, timedelta
+from typing import Optional
+import hmac
+from fastapi import Header, HTTPException, Request, Depends, status
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
+from app.config import settings
+from app.database import get_db
 from app.models import Partner, RequestNonce
-from app.hashing import hash_api_key, compute_request_signature_v2, compute_request_signature
+from app.hashing import hash_api_key, compute_request_signature_v2
 
 async def authenticate_partner(
     request: Request,
@@ -23,10 +21,11 @@ async def authenticate_partner(
     """
     Authenticates delivery partner requests:
     1. Looks up partner by SHA-256 hash of X-Partner-Key and ensures active
-    2. Enforces X-Timestamp (within 300 seconds of server time)
-    3. Enforces X-Nonce (at least 16 chars, unseen in last 10 minutes)
-    4. Validates HMAC-SHA256 signature v2 (method, path, query, timestamp, nonce, sha256(body))
-    5. Rejects replays and invalid signatures with 401 Unauthorized
+    2. Enforces required signature headers (X-Timestamp, X-Nonce, X-Signature)
+    3. Enforces X-Timestamp (within 300 seconds of server time)
+    4. Enforces X-Nonce format (at least 16 chars)
+    5. Validates HMAC-SHA256 signature v2 (method, path, query, timestamp, nonce, sha256(body))
+    6. Nonce check and insert (rejecting replays, catching IntegrityError on uq_partner_nonce)
     """
     if not x_partner_key:
         raise HTTPException(
@@ -48,10 +47,33 @@ async def authenticate_partner(
             detail="Partner account is disabled"
         )
     
-    if not x_signature:
+    if not x_signature or not x_timestamp or not x_nonce:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing X-Signature header"
+            detail="Missing signature headers"
+        )
+
+    # Validate timestamp
+    try:
+        req_ts = int(x_timestamp.strip())
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid X-Timestamp header"
+        )
+        
+    current_ts = int(time.time())
+    if abs(current_ts - req_ts) > 300:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Request timestamp expired or skewed beyond 300 seconds"
+        )
+        
+    nonce_str = x_nonce.strip()
+    if len(nonce_str) < 16:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="X-Nonce must be at least 16 characters"
         )
 
     # Read raw body for HMAC verification
@@ -69,74 +91,55 @@ async def authenticate_partner(
     request._receive = receive
     request._stream_consumed = False
 
-    # Check if v2 headers (X-Timestamp, X-Nonce) are provided
-    if x_timestamp and x_nonce:
-        try:
-            req_ts = int(x_timestamp.strip())
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid X-Timestamp header"
-            )
-            
-        current_ts = int(time.time())
-        if abs(current_ts - req_ts) > 300:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Request timestamp expired or skewed beyond 300 seconds"
-            )
-            
-        nonce_str = x_nonce.strip()
-        if len(nonce_str) < 16:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="X-Nonce must be at least 16 characters"
-            )
-            
-        # Check if nonce was seen in the last 10 minutes
-        ten_mins_ago = datetime.now(timezone.utc) - timedelta(minutes=10)
-        existing_nonce = db.query(RequestNonce).filter(
-            RequestNonce.partner_id == partner.partner_id,
-            RequestNonce.nonce == nonce_str,
-            RequestNonce.seen_at >= ten_mins_ago
-        ).first()
-        
-        if existing_nonce:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Replayed request: nonce already used"
-            )
-            
-        # Record new nonce
-        new_nonce = RequestNonce(
-            partner_id=partner.partner_id,
-            nonce=nonce_str,
-            seen_at=datetime.now(timezone.utc)
-        )
-        db.add(new_nonce)
-        # Purge older nonces
-        db.query(RequestNonce).filter(RequestNonce.seen_at < ten_mins_ago).delete()
-        db.commit()
+    # Verify signature v2 BEFORE touching or recording nonce
+    path = request.url.path
+    query = request.url.query
+    expected_sig = compute_request_signature_v2(
+        api_key=x_partner_key,
+        method=request.method,
+        path=path,
+        query=query,
+        timestamp=x_timestamp.strip(),
+        nonce=nonce_str,
+        body=body
+    )
 
-        path = request.url.path
-        query = request.url.query
-        expected_sig = compute_request_signature_v2(
-            api_key=x_partner_key,
-            method=request.method,
-            path=path,
-            query=query,
-            timestamp=x_timestamp.strip(),
-            nonce=nonce_str,
-            body=body
-        )
-    else:
-        # Fallback to legacy signature v1 (body only) for existing callers
-        expected_sig = compute_request_signature(x_partner_key, body)
-    
     if not hmac.compare_digest(x_signature.strip().lower(), expected_sig.strip().lower()):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid request signature"
+        )
+
+    # Check if nonce was seen in the last 10 minutes
+    ten_mins_ago = datetime.now(timezone.utc) - timedelta(minutes=10)
+    existing_nonce = db.query(RequestNonce).filter(
+        RequestNonce.partner_id == partner.partner_id,
+        RequestNonce.nonce == nonce_str,
+        RequestNonce.seen_at >= ten_mins_ago
+    ).first()
+    
+    if existing_nonce:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Replayed request: nonce already used"
+        )
+        
+    # Record new nonce and catch potential concurrent replay via uq_partner_nonce
+    new_nonce = RequestNonce(
+        partner_id=partner.partner_id,
+        nonce=nonce_str,
+        seen_at=datetime.now(timezone.utc)
+    )
+    db.add(new_nonce)
+    try:
+        # Purge older nonces
+        db.query(RequestNonce).filter(RequestNonce.seen_at < ten_mins_ago).delete()
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Replayed request: nonce already used"
         )
     
     return partner

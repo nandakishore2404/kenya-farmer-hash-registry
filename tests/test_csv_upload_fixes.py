@@ -1,8 +1,8 @@
 import requests
 import pytest
-from app.hashing import compute_request_signature, rekey_hash
+from app.hashing import rekey_hash
 from app.models import Farmer, PartnerLink
-from sdk.python.hasher import hash_phone
+from sdk.python.hasher import hash_phone, sign_request
 
 PARTNER_KEY = "partner_shared_pilot_secret"
 ALPHA_KEY = "alpha_api_key_pilot_2026"
@@ -28,13 +28,8 @@ def test_csv_upload_duplicate_code_in_same_file(client, db_session):
     
     req = requests.Request("POST", "http://testserver/v1/farmers:upload", files={"file": ("farmers.csv", file_bytes, "text/csv")})
     prep = req.prepare()
-    sig = compute_request_signature(ALPHA_KEY, prep.body)
-    
-    headers = {
-        "X-Partner-Key": ALPHA_KEY,
-        "X-Signature": sig,
-        "Content-Type": prep.headers["Content-Type"]
-    }
+    headers = sign_request(ALPHA_KEY, "POST", "/v1/farmers:upload", "", prep.body)
+    headers["Content-Type"] = prep.headers["Content-Type"]
     
     res = client.post("/v1/farmers:upload", content=prep.body, headers=headers)
     assert res.status_code == 200
@@ -74,13 +69,8 @@ def test_csv_upload_invalid_row_isolation(client, db_session):
     
     req = requests.Request("POST", "http://testserver/v1/farmers:upload", files={"file": ("farmers.csv", file_bytes, "text/csv")})
     prep = req.prepare()
-    sig = compute_request_signature(ALPHA_KEY, prep.body)
-    
-    headers = {
-        "X-Partner-Key": ALPHA_KEY,
-        "X-Signature": sig,
-        "Content-Type": prep.headers["Content-Type"]
-    }
+    headers = sign_request(ALPHA_KEY, "POST", "/v1/farmers:upload", "", prep.body)
+    headers["Content-Type"] = prep.headers["Content-Type"]
     
     res = client.post("/v1/farmers:upload", content=prep.body, headers=headers)
     assert res.status_code == 200

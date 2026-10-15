@@ -1,21 +1,17 @@
 import json
 import pytest
 from datetime import datetime, timezone, timedelta
-from app.hashing import compute_request_signature
 from app.models import Farmer, PartnerLink
-from sdk.python.hasher import hash_phone
+from sdk.python.hasher import hash_phone, sign_request
 
 PARTNER_KEY = "partner_shared_pilot_secret"
 ALPHA_KEY = "alpha_api_key_pilot_2026"
 BETA_KEY = "beta_api_key_pilot_2026"
 
 def get_auth_headers(api_key: str, body: bytes) -> dict:
-    sig = compute_request_signature(api_key, body)
-    return {
-        "X-Partner-Key": api_key,
-        "X-Signature": sig,
-        "Content-Type": "application/json"
-    }
+    headers = sign_request(api_key, "POST", "/v1/farmers", "", body)
+    headers["Content-Type"] = "application/json"
+    return headers
 
 def test_future_or_very_old_onboarded_at_rejected(client):
     """
@@ -78,17 +74,11 @@ def test_first_to_onboard_credit_retained_by_received_at(client, db_session):
     assert res_b.status_code == 200
     
     # Query summary for Partner A -> first_to_onboard should be credited to A
-    headers_summary_a = {
-        "X-Partner-Key": ALPHA_KEY,
-        "X-Signature": compute_request_signature(ALPHA_KEY, b"")
-    }
+    headers_summary_a = sign_request(ALPHA_KEY, "GET", "/v1/partners/me/summary", "", b"")
     res_sum_a = client.get("/v1/partners/me/summary", headers=headers_summary_a)
     assert res_sum_a.status_code == 200
     
-    headers_summary_b = {
-        "X-Partner-Key": BETA_KEY,
-        "X-Signature": compute_request_signature(BETA_KEY, b"")
-    }
+    headers_summary_b = sign_request(BETA_KEY, "GET", "/v1/partners/me/summary", "", b"")
     res_sum_b = client.get("/v1/partners/me/summary", headers=headers_summary_b)
     assert res_sum_b.status_code == 200
     
