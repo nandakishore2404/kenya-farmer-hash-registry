@@ -1,5 +1,6 @@
 import os
 from typing import Optional
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 COMMITTED_INSECURE_KEYS = {
@@ -44,6 +45,7 @@ class Settings(BaseSettings):
         env_file = ".env"
         extra = "ignore"
 
+    @model_validator(mode="after")
     def validate_production_security(self):
         """
         Enforce strict validation when ENV is not 'development'.
@@ -113,6 +115,6 @@ class Settings(BaseSettings):
                 used_fallbacks.append("DASHBOARD_PASSWORD")
             if used_fallbacks:
                 print(f"\n[SECURITY WARNING] Development fallback keys in use: {', '.join(used_fallbacks)}. Never run in production with these keys.\n")
+        return self
 
 settings = Settings()
-settings.validate_production_security()

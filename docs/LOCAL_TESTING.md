@@ -113,6 +113,7 @@ make scenario NAME=replay-attack
 6. `csv-duplicates`: Validates in-file deduplication and per-row savepoint isolation.
 7. `replay-attack`: Validates nonce replay prevention and timestamp tolerance window (300s).
 8. `disabled-partner`: Validates immediate 401 rejection for deactivated delivery partners.
+9. `legacy-signature`: Validates that legacy body-only signatures (omitting `X-Timestamp` and `X-Nonce`) are strictly rejected with HTTP 401.
 
 ---
 

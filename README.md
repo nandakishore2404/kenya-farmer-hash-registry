@@ -6,16 +6,14 @@ The registry de-duplicates and counts each farmer **exactly once** across multip
 
 ---
 
-## Key Highlights & Security Hardening (Review of 15 October 2026)
+## Key Highlights & Security Hardening (Review Round 2 — 15 October 2026)
 
-- **Strict Zero-Knowledge:** Central registry holds only double-keyed codes ($H(\text{SERVER\_KEY}, H(\text{PARTNER\_KEY}, \text{phone}))$). Zero PII or single-hashed phone numbers ever hit storage or logs.
-- **Bulk CSV Isolation & In-File Deduplication:** In-file repeats within the same CSV upload are handled idempotently without duplicate link errors. Every row runs in its own nested savepoint; rejected rows never rollback accepted rows. Accurate counts are returned: `{"rows_received": n, "rows_accepted": a, "rows_rejected": r}`.
-- **Tamper-Proof First-to-Onboard Credit:** Discovery attribution is anchored exclusively to the registry's server UTC arrival timestamp (`received_at`). Partner-supplied `onboarded_at` is preserved for historical reporting only and strictly validated against future dates and pilot start boundaries.
-- **Replay Protection (Signature v2):** Every request is signed with HMAC-SHA256 over method, path, query, timestamp, nonce, and payload hash. Replayed nonces and timestamps older than 300 seconds are rejected with HTTP 401.
-- **Zero Hardcoded Secrets & Production Safety:** All default secrets removed. Refuses startup outside `ENV=development` if keys are missing, shorter than 32 characters, or match insecure test strings.
-- **Role-Based Partner Management CLI:** Automated creation of hardcoded partner credentials removed. Use `python -m app.cli` to provision, list, or disable delivery partner accounts.
-- **Secured Analytics Dashboard:** Protected with HTTP Basic Authentication (`DASHBOARD_USER` / `DASHBOARD_PASSWORD`) using constant-time digest comparison. Strict $k$-anonymity displays counts $< 5$ as `"<5"` with suppressed chart points. Real zeros remain `0`.
-- **Local Developer Experience (Zero-Docker Option):** Run `make local` to launch on SQLite (`http://localhost:8008`) with an interactive Test Console at `/dev/console` and an 8-part scenario runner via `make scenarios`.
+- **Strict Signature v2 & Replay Prevention:** Legacy body-only signing is completely deleted. All partner requests require `X-Timestamp`, `X-Nonce`, and `X-Signature`. Signatures are validated before nonces are recorded, and replayed requests return HTTP 401.
+- **Production Security Gates:** The service defaults to `ENV=production`. Outside explicit `ENV=development`, startup fails if secrets are missing, shorter than 32 characters, contain `CHANGE_ME`, match committed keys, use SQLite, or enable test partner seeding.
+- **Fair Credit on Link Reactivation:** On reactivation after consent withdrawal, a partner's `received_at` timestamp is updated to `now`. Credit stays with the partner that maintained an active registration throughout.
+- **Bulk CSV Isolation & Unreadable Date Rejection:** Rows with unparseable `onboarded_at` dates are rejected (`rows_rejected += 1`) without logging row content or PII. Empty `onboarded_at` remains permitted (defaults to upload time).
+- **Balanced Analytics Dashboard:** Restored the 3-tile single-row summary layout above charts, with strictly neutral test partners (Test Partners A, B, and C).
+- **Robust Local Test Suite:** Exact library versions pinned in `requirements.txt`. Automated test suite includes 62 unit/integration tests and a 9-scenario runner (`make scenarios`) with the `legacy-signature` check.
 
 ---
 

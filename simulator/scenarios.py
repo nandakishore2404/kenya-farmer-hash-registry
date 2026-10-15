@@ -226,6 +226,32 @@ def test_scenario_disabled_partner():
             
     return "Disabled partner rejected with 401"
 
+# 9. Legacy Signature Rejection
+def test_scenario_legacy_signature():
+    import hmac
+    import hashlib
+    phone = f"+254712{random.randint(100000, 999999)}"
+    h = hash_phone(phone, PARTNER_KEY)
+    payload = json.dumps({
+        "hash": h,
+        "gender": "F",
+        "age_band": "25-34",
+        "county_code": "047",
+        "onboarded_at": "2026-10-15T10:00:00Z"
+    })
+    body_bytes = payload.encode("utf-8")
+    api_key = PARTNERS["test_partner_a"]
+    legacy_sig = hmac.new(api_key.encode("utf-8"), body_bytes, hashlib.sha256).hexdigest()
+    legacy_headers = {
+        "X-Partner-Key": api_key,
+        "X-Signature": legacy_sig,
+        "Content-Type": "application/json"
+    }
+    resp = make_request("POST", "/v1/farmers", "test_partner_a", body=payload, headers_override=legacy_headers)
+    assert resp.status_code == 401, f"Expected 401 for legacy body-only signature, got {resp.status_code}: {resp.text}"
+    assert "missing signature headers" in resp.text.lower()
+    return "Legacy body-only signature rejected with 401"
+
 SCENARIOS = {
     "single-registration": test_scenario_single_registration,
     "shared-phone": test_scenario_shared_phone,
@@ -235,6 +261,7 @@ SCENARIOS = {
     "csv-duplicates": test_scenario_csv_duplicates,
     "replay-attack": test_scenario_replay_attack,
     "disabled-partner": test_scenario_disabled_partner,
+    "legacy-signature": test_scenario_legacy_signature,
 }
 
 def run_scenarios(target: str = "all"):

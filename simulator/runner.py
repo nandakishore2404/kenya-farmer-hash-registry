@@ -83,7 +83,7 @@ def run_simulation(base_url: str = "http://localhost:8000"):
     
     session = requests.Session()
 
-    # 3. Process direct JSON partner calls (Partner Alpha and Beta)
+    # 3. Process direct JSON partner calls (Test Partners A and B)
     print(f"\n[2/5] Sending {len(direct_registrations)} real-time registrations via API (POST /v1/farmers)...")
     start_time = time.time()
     
@@ -105,8 +105,8 @@ def run_simulation(base_url: str = "http://localhost:8000"):
             print(f"      Sent {sent_count}/{len(direct_registrations)} registrations...")
     print(f"      Completed direct registrations in {time.time() - start_time:.2f}s")
 
-    # 4. Process Partner Gamma CSV backfill upload
-    print(f"\n[3/5] Backfilling {len(csv_registrations)} registrations for Partner Gamma via CSV (POST /v1/farmers:upload)...")
+    # 4. Process Test Partner C CSV backfill upload
+    print(f"\n[3/5] Backfilling {len(csv_registrations)} registrations for Test Partner C via CSV (POST /v1/farmers:upload)...")
     csv_buffer = io.StringIO()
     writer = csv.writer(csv_buffer)
     writer.writerow(["hash", "gender", "age_band", "county_code", "onboarded_at"])

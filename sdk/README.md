@@ -41,6 +41,8 @@ All phone numbers are cleaned and converted into standard E.164 format:
 
 ## Usage Examples
 
+> **Note on Strict Signature v2:** Every API request must include `X-Timestamp`, `X-Nonce`, and `X-Signature` generated via `sign_request` / `signRequest`. Legacy body-only signature formats (v1) omitting timestamp and nonce are strictly rejected by the registry with HTTP 401 `Missing signature headers`.
+
 ### 1. Python SDK
 
 ```python

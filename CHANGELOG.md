@@ -4,6 +4,37 @@ All notable changes to the **Kenya Farmer Hash Registry** project will be docume
 
 ---
 
+## [1.2.0] - 2026-10-15 (Audit Round 2 Hardening)
+
+### Added
+- **Strict Signature v2 Enforcement:**
+  - Deleted legacy `compute_request_signature` (v1) body-only signing fallback.
+  - Required `X-Timestamp`, `X-Nonce`, and `X-Signature` on all partner requests; returns 401 `"Missing signature headers"` if absent.
+  - Verification sequence hardened: signature verified *before* recording nonce in database. Concurrent replays caught via `uq_partner_nonce` IntegrityError.
+- **Strict Production Security Gates:**
+  - `ENV` defaults to `production`. Development mode must be explicitly specified (`ENV=development`).
+  - Added strict production startup validation: refuses startup if `SERVER_KEY`, `ADMIN_KEY`, `DASHBOARD_PASSWORD`, or `DATABASE_URL` are missing, shorter than 32 characters, contain `CHANGE_ME`, match committed insecure keys, use SQLite, have `SEED_TEST_PARTNERS=True`, or use admin password $<16$ characters.
+  - `.env.example` updated with explicit `CHANGE_ME` values that can never pass production gates.
+- **Accurate Database Reset Logging:**
+  - `scripts/reset_db.py` queries actual seeded partner records and reports true count and names instead of unconditionally printing.
+- **Scenario 9 (Legacy Signature Rejection):**
+  - Added `legacy-signature` scenario to `simulator/scenarios.py` verifying body-only HMAC signatures are rejected with 401.
+
+### Changed
+- **Credit Attribution on Link Reactivation:**
+  - On reactivation of a previously withdrawn partner link, `received_at` resets to current server UTC time (`received_at = now`). First-to-onboard credit stays with the continuous active partner.
+- **Bulk CSV Upload Date Parsing:**
+  - In `app/routes/farmers.py`, `parse_iso_datetime` raises `ValueError` on unparseable date strings. Unparseable dates reject only that row (`rows_rejected += 1`) without logging row content or PII. Empty `onboarded_at` remains permitted and uses upload time.
+- **Dashboard Layout & Neutral Test Partners:**
+  - Balanced `<div>` tags in `app/templates/dashboard.html` (closing tag added, restoring the 3-tile single-row layout).
+  - Replaced legacy test partners with neutral `test_partner_a`, `test_partner_b`, `test_partner_c` across `app/main.py`, simulator, and tests.
+  - Sanitized real organisation names from repository documentation.
+- **Pinned Dependencies & Dev Endpoint Protection:**
+  - Pinned exact dependency versions in `requirements.txt`.
+  - Added test coverage ensuring `GET /dev/console` and `GET /dev/unsuppressed-metrics` return 200 in development and 404 in production.
+
+---
+
 ## [1.1.0] - 2026-10-15 (Review Fixes Release)
 
 ### Added
