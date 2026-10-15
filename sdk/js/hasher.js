@@ -37,8 +37,34 @@ function hashPhone(phone, partnerKey) {
   return crypto.createHmac('sha256', partnerKey).update(message).digest('hex');
 }
 
+function signRequest({
+  apiKey,
+  method,
+  path,
+  query = '',
+  body = '',
+  timestamp = null,
+  nonce = null
+}) {
+  const ts = timestamp !== null ? String(timestamp) : String(Math.floor(Date.now() / 1000));
+  const n = nonce !== null ? String(nonce) : crypto.randomBytes(16).toString('hex');
+  const bodyBuffer = Buffer.isBuffer(body) ? body : Buffer.from(body || '', 'utf-8');
+  const bodyHash = crypto.createHash('sha256').update(bodyBuffer).digest('hex');
+
+  const canonical = `${method.toUpperCase()}\n${path}\n${query}\n${ts}\n${n}\n${bodyHash}`;
+  const sig = crypto.createHmac('sha256', apiKey.trim()).update(canonical).digest('hex');
+
+  return {
+    'X-Partner-Key': apiKey,
+    'X-Timestamp': ts,
+    'X-Nonce': n,
+    'X-Signature': sig
+  };
+}
+
 module.exports = {
   normalisePhone,
   hashPhone,
+  signRequest,
   InvalidPhone,
 };

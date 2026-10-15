@@ -45,6 +45,7 @@ class PartnerLink(Base):
     farmer_id = Column(Integer, ForeignKey("farmer.id", ondelete="CASCADE"), nullable=False, index=True)
     partner_id = Column(String(50), ForeignKey("partner.partner_id"), nullable=False, index=True)
     linked_at = Column(DateTime, default=utcnow, nullable=False)
+    received_at = Column(DateTime, default=utcnow, nullable=False, index=True)
     status = Column(String(20), default="active", nullable=False)
 
     __table_args__ = (
@@ -62,6 +63,7 @@ class Partner(Base):
     partner_id = Column(String(50), primary_key=True, index=True)
     name = Column(String(100), nullable=False)
     api_key_hash = Column(String(64), nullable=False, unique=True, index=True)
+    active = Column(Integer, default=1, nullable=False)  # 1 for active, 0 for disabled
 
 
 class AuditLog(Base):
@@ -72,3 +74,16 @@ class AuditLog(Base):
     partner_id = Column(String(50), nullable=False)
     farmer_id = Column(Integer, nullable=True)  # Strictly farmer_id or NULL; NEVER store incoming hash or phone!
     at = Column(DateTime, default=utcnow, nullable=False)
+
+
+class RequestNonce(Base):
+    __tablename__ = "request_nonce"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    partner_id = Column(String(50), ForeignKey("partner.partner_id"), nullable=False, index=True)
+    nonce = Column(String(100), nullable=False)
+    seen_at = Column(DateTime, default=utcnow, nullable=False, index=True)
+
+    __table_args__ = (
+        UniqueConstraint("partner_id", "nonce", name="uq_partner_nonce"),
+    )

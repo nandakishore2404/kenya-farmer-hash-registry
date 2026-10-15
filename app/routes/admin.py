@@ -51,7 +51,7 @@ def admin_lookup(
     db.add(audit)
     db.commit()
     
-    links = db.query(PartnerLink).filter(PartnerLink.farmer_id == farmer.id).all()
+    links = db.query(PartnerLink).filter(PartnerLink.farmer_id == farmer.id).order_by(PartnerLink.received_at.asc()).all()
     partner_details = [
         PartnerLinkDetail(
             partner_id=link.partner_id,

@@ -18,9 +18,27 @@ def hash_api_key(api_key: str) -> str:
     """
     return hashlib.sha256(api_key.strip().encode("utf-8")).hexdigest()
 
+def compute_request_signature_v2(
+    api_key: str,
+    method: str,
+    path: str,
+    query: str,
+    timestamp: str,
+    nonce: str,
+    body: bytes
+) -> str:
+    """
+    Signature v2:
+    hex(HMAC-SHA256(api_key, METHOD + "\\n" + PATH + "\\n" + QUERY + "\\n" + TIMESTAMP + "\\n" + NONCE + "\\n" + hex(SHA256(body))))
+    """
+    body_hash = hashlib.sha256(body).hexdigest()
+    canonical_str = f"{method.upper()}\n{path}\n{query}\n{timestamp}\n{nonce}\n{body_hash}"
+    key = api_key.strip().encode("utf-8")
+    return hmac.new(key, canonical_str.encode("utf-8"), hashlib.sha256).hexdigest()
+
 def compute_request_signature(api_key: str, body: bytes) -> str:
     """
-    Computes HMAC-SHA256 signature of request body using partner API key.
+    Computes legacy HMAC-SHA256 signature of request body using partner API key.
     """
     key = api_key.strip().encode("utf-8")
     return hmac.new(key, body, hashlib.sha256).hexdigest()

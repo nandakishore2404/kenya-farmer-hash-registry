@@ -1,0 +1,66 @@
+{
+  "description": "Pre-computed phone hashes using PARTNER_KEY=partner_shared_pilot_secret for manual curl/API testing.",
+  "partner_key": "partner_shared_pilot_secret",
+  "samples": [
+    {
+      "phone_raw": "+254712000001",
+      "phone_normalised": "+254712000001",
+      "partner_hash": "83b09f61553e05aba438fc2613cdb71501af03aea3e2ae3634360f16fcda1a02",
+      "note": "Valid farmer 1 (Nairobi)"
+    },
+    {
+      "phone_raw": "+254712000002",
+      "phone_normalised": "+254712000002",
+      "partner_hash": "fce2d96bc33257d068ad3da0c0f3eb9704acbca1aa889c8f889dac883a2efc89",
+      "note": "Valid farmer 2 (Nakuru)"
+    },
+    {
+      "phone_raw": "+254712000003",
+      "phone_normalised": "+254712000003",
+      "partner_hash": "153c15c2ed39eafd6020b65892c37d416c9035caeababd057c7a10dcc2633d5b",
+      "note": "Shared phone household user A (Nyeri)"
+    },
+    {
+      "phone_raw": "+254712000003",
+      "phone_normalised": "+254712000003",
+      "partner_hash": "153c15c2ed39eafd6020b65892c37d416c9035caeababd057c7a10dcc2633d5b",
+      "note": "Shared phone household user B (same phone as user A)"
+    },
+    {
+      "phone_raw": "+254712000004",
+      "phone_normalised": "+254712000004",
+      "partner_hash": "f68123ef8f3e48e29d6f367b3b10d6c28cf7d5da5d1cfdef3c8270ea71e207a2",
+      "note": "Valid farmer 3 (Kisumu)"
+    },
+    {
+      "phone_raw": "+254712000005",
+      "phone_normalised": "+254712000005",
+      "partner_hash": "dadc0c7a28a41bd05bd42a592f0a82a46706152d4ab9bcd3d0eaffd090a58e43",
+      "note": "Invalid county code (999)"
+    },
+    {
+      "phone_raw": "+254712000006",
+      "phone_normalised": "+254712000006",
+      "partner_hash": "80ce631f38062dff8fefbd1a12f1b825c49ea7f8ce634d842a46c6fb54372337",
+      "note": "Valid farmer 4 (Nairobi)"
+    },
+    {
+      "phone_raw": "+254712000007",
+      "phone_normalised": "+254712000007",
+      "partner_hash": "14583df6102df50401854415a2eb814afcd66c29e5f069beadf976d7be777a6c",
+      "note": "Invalid gender code (X)"
+    },
+    {
+      "phone_raw": "+254712000008",
+      "phone_normalised": "+254712000008",
+      "partner_hash": "d5ab176ee8300254727c18784a680e918dbd76760d08abfd6b034d82acc74776",
+      "note": "Valid farmer 5 (Nyeri)"
+    },
+    {
+      "phone_raw": "+254712000009",
+      "phone_normalised": "+254712000009",
+      "partner_hash": "093b0cd8c47672eea41fdc108fda4789b52ae9d4390b1693bfa872f79abea3fa",
+      "note": "Future registration date (November 2026)"
+    }
+  ]
+}

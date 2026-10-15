@@ -10,37 +10,50 @@ import requests
 # Ensure root in path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from sdk.python.hasher import hash_phone, normalise_phone
-from app.hashing import compute_request_signature
+from sdk.python.hasher import hash_phone, normalise_phone, sign_request
 from simulator.generator import generate_synthetic_dataset
 
-PARTNER_KEY = "partner_shared_pilot_secret"
-PARTNER_KEYS = {
+ENV = os.environ.get("ENV", "development")
+
+DEV_DEFAULT_PARTNER_KEY = "partner_shared_pilot_secret"
+DEV_DEFAULT_PARTNER_KEYS = {
     "partner_alpha": "alpha_api_key_pilot_2026",
     "partner_beta": "beta_api_key_pilot_2026",
     "partner_gamma": "gamma_api_key_pilot_2026",
 }
 
+if ENV != "development":
+    PARTNER_KEY = os.environ.get("PARTNER_KEY")
+    if not PARTNER_KEY or PARTNER_KEY == DEV_DEFAULT_PARTNER_KEY:
+        raise ValueError("In non-development environments, a production PARTNER_KEY must be provided via environment variables.")
+    PARTNER_KEYS = {
+        "partner_alpha": os.environ.get("PARTNER_ALPHA_API_KEY", ""),
+        "partner_beta": os.environ.get("PARTNER_BETA_API_KEY", ""),
+        "partner_gamma": os.environ.get("PARTNER_GAMMA_API_KEY", ""),
+    }
+    for pid, pkey in PARTNER_KEYS.items():
+        if not pkey or pkey == DEV_DEFAULT_PARTNER_KEYS.get(pid):
+            raise ValueError(f"In non-development environments, production API key for {pid} must be set via environment variable.")
+else:
+    PARTNER_KEY = os.environ.get("PARTNER_KEY", DEV_DEFAULT_PARTNER_KEY)
+    PARTNER_KEYS = {
+        "partner_alpha": os.environ.get("PARTNER_ALPHA_API_KEY", DEV_DEFAULT_PARTNER_KEYS["partner_alpha"]),
+        "partner_beta": os.environ.get("PARTNER_BETA_API_KEY", DEV_DEFAULT_PARTNER_KEYS["partner_beta"]),
+        "partner_gamma": os.environ.get("PARTNER_GAMMA_API_KEY", DEV_DEFAULT_PARTNER_KEYS["partner_gamma"]),
+    }
+
 def sign_and_post(base_url: str, endpoint: str, partner_id: str, payload_dict: dict, session: requests.Session):
     api_key = PARTNER_KEYS[partner_id]
     body = json.dumps(payload_dict).encode("utf-8")
-    sig = compute_request_signature(api_key, body)
-    headers = {
-        "X-Partner-Key": api_key,
-        "X-Signature": sig,
-        "Content-Type": "application/json"
-    }
+    headers = sign_request(api_key, "POST", endpoint, "", body)
+    headers["Content-Type"] = "application/json"
     resp = session.post(f"{base_url}{endpoint}", data=body, headers=headers)
     resp.raise_for_status()
     return resp.json()
 
 def sign_and_delete(base_url: str, endpoint: str, partner_id: str, session: requests.Session):
     api_key = PARTNER_KEYS[partner_id]
-    sig = compute_request_signature(api_key, b"")
-    headers = {
-        "X-Partner-Key": api_key,
-        "X-Signature": sig
-    }
+    headers = sign_request(api_key, "DELETE", endpoint, "", b"")
     resp = session.delete(f"{base_url}{endpoint}", headers=headers)
     resp.raise_for_status()
     return resp.json()
@@ -74,6 +87,8 @@ def run_simulation(base_url: str = "http://localhost:8000"):
     print(f"\n[2/5] Sending {len(direct_registrations)} real-time registrations via API (POST /v1/farmers)...")
     start_time = time.time()
     
+    # Use fixed timestamp in valid window for pilot (past pilot start date, not in future)
+    valid_now = "2026-10-15T10:00:00Z"
     sent_count = 0
     for r in direct_registrations:
         h = hash_phone(r["raw_phone"], PARTNER_KEY)
@@ -82,7 +97,7 @@ def run_simulation(base_url: str = "http://localhost:8000"):
             "gender": r["gender"],
             "age_band": r["age_band"],
             "county_code": r["county_code"],
-            "onboarded_at": datetime.now(timezone.utc).isoformat()
+            "onboarded_at": valid_now
         }
         sign_and_post(base_url, "/v1/farmers", r["partner_id"], payload, session)
         sent_count += 1
@@ -103,19 +118,15 @@ def run_simulation(base_url: str = "http://localhost:8000"):
             r["gender"],
             r["age_band"],
             r["county_code"],
-            datetime.now(timezone.utc).isoformat()
+            valid_now
         ])
     
     csv_bytes = csv_buffer.getvalue().encode("utf-8")
     gamma_key = PARTNER_KEYS["partner_gamma"]
     
-    # Sign raw CSV bytes
-    sig = compute_request_signature(gamma_key, csv_bytes)
-    headers = {
-        "X-Partner-Key": gamma_key,
-        "X-Signature": sig,
-        "Content-Type": "text/csv"
-    }
+    # Sign raw CSV bytes using Signature v2
+    headers = sign_request(gamma_key, "POST", "/v1/farmers:upload", "", csv_bytes)
+    headers["Content-Type"] = "text/csv"
     upload_res = session.post(f"{base_url}/v1/farmers:upload", data=csv_bytes, headers=headers)
     upload_res.raise_for_status()
     upload_data = upload_res.json()
@@ -131,7 +142,7 @@ def run_simulation(base_url: str = "http://localhost:8000"):
     print(f"      Processed {withdrawn_count} withdrawal requests.")
 
     # 6. Retrieve metrics from Registry
-    print("\n[5/5] Fetching registry metrics and generating reconciliation report...")
+    print("\n[5/5] Fetching registry metrics and performing exact reconciliation...")
     from app.database import SessionLocal
     from app.models import Farmer, PartnerLink
     db = SessionLocal()
@@ -145,23 +156,50 @@ def run_simulation(base_url: str = "http://localhost:8000"):
     # Partner-specific summaries via authenticated API
     partner_summaries = {}
     for pid in PARTNER_KEYS:
-        sig = compute_request_signature(PARTNER_KEYS[pid], b"")
+        headers = sign_request(PARTNER_KEYS[pid], "GET", "/v1/partners/me/summary", "", b"")
         resp = session.get(
             f"{base_url}/v1/partners/me/summary",
-            headers={"X-Partner-Key": PARTNER_KEYS[pid], "X-Signature": sig}
+            headers=headers
         )
         partner_summaries[pid] = resp.json()
 
-    # Calculate metrics
-    true_individuals = dataset["summary"]["true_unique_individuals"]
+    # Calculate exact reconciliation steps from ground truth
+    true_farmers = len(dataset["individuals"])
+    primary_phones = {normalise_phone(ind["primary_phone_digits"]) for ind in dataset["individuals"]}
+    shared_phone_merges = true_farmers - len(primary_phones)
+    
+    submitted_phones = set()
+    phone_partner_links = {}
+    for r in dataset["registrations"]:
+        p = normalise_phone(r["raw_phone"])
+        submitted_phones.add(p)
+        phone_partner_links.setdefault(p, set()).add(r["partner_id"])
+        
+    second_sims_used = len(submitted_phones - primary_phones)
+    distinct_numbers = len(submitted_phones)
+    
+    for w in dataset["withdrawals"]:
+        p = normalise_phone(w["raw_phone"])
+        if p in phone_partner_links:
+            phone_partner_links[p].discard(w["partner_id"])
+            
+    fully_withdrawn_farmers = sum(1 for p, partners in phone_partner_links.items() if len(partners) == 0)
+    expected_registry_count = distinct_numbers - fully_withdrawn_farmers
+    difference = registry_unique_farmers - expected_registry_count
+
     total_partner_registrations = dataset["summary"]["total_partner_registrations"]
     overlap_rate = (1.0 - (registry_unique_farmers / total_active_links)) * 100.0 if total_active_links > 0 else 0.0
 
-    shared_pairs = dataset["summary"]["shared_phone_pairs"]
-    second_sims = dataset["summary"]["second_sim_individuals"]
-    
-    # Discrepancy analysis
-    delta = registry_unique_farmers - true_individuals
+    print("\n--- RECONCILIATION STEPS ---")
+    print(f"  Step 1. True unique human farmers:               {true_farmers}")
+    print(f"  Step 2. Shared-phone merges:                     -{shared_phone_merges}")
+    print(f"  Step 3. Second SIMs actually used across partners: +{second_sims_used}")
+    print(f"  Step 4. Distinct phone numbers submitted:        {distinct_numbers}")
+    print(f"  Step 5. Farmers whose every link was withdrawn:  -{fully_withdrawn_farmers}")
+    print(f"  Step 6. Expected registry unique count:          {expected_registry_count}")
+    print(f"  Step 7. Observed registry unique count:          {registry_unique_farmers}")
+    print(f"  Step 8. Difference (Observed - Expected):        {difference:+d}")
+    print("----------------------------\n")
 
     # Generate markdown report
     report_content = f"""# Kenya Farmer Hash Registry: Simulation & Reconciliation Report
@@ -178,9 +216,11 @@ def run_simulation(base_url: str = "http://localhost:8000"):
 | **Total Partner Registrations Sent** | **{total_partner_registrations:,}** |
 | **Active Partner Registrations in Registry** | **{total_active_links:,}** |
 | **Removed Registrations (Consent Withdrawn)** | **{total_removed_links:,}** |
-| **Ground Truth True Unique Farmers** | **{true_individuals:,}** |
+| **Ground Truth True Unique Farmers** | **{true_farmers:,}** |
+| **Distinct Normalised Numbers Submitted** | **{distinct_numbers:,}** |
+| **Expected Unique Farmers in Registry** | **{expected_registry_count:,}** |
 | **Registry De-duplicated Unique Farmers** | **{registry_unique_farmers:,}** |
-| **Discrepancy (Registry - Ground Truth)** | **{delta:+d}** |
+| **Discrepancy (Registry - Expected)** | **{difference:+d}** |
 | **Cross-Partner Overlap Rate** | **{overlap_rate:.2f}%** |
 
 ---
@@ -189,39 +229,32 @@ def run_simulation(base_url: str = "http://localhost:8000"):
 
 | Partner ID | Total Active Links | First-to-Onboard Credit | Already Known in Registry |
 | :--- | :--- | :--- | :--- |
-| **partner_alpha** (DigiFarm Kenya) | {partner_summaries['partner_alpha']['farmers_sent']:,} | {partner_summaries['partner_alpha']['first_to_onboard']:,} | {partner_summaries['partner_alpha']['already_known']:,} |
-| **partner_beta** (One Acre Fund) | {partner_summaries['partner_beta']['farmers_sent']:,} | {partner_summaries['partner_beta']['first_to_onboard']:,} | {partner_summaries['partner_beta']['already_known']:,} |
-| **partner_gamma** (KALRO Advisory - CSV) | {partner_summaries['partner_gamma']['farmers_sent']:,} | {partner_summaries['partner_gamma']['first_to_onboard']:,} | {partner_summaries['partner_gamma']['already_known']:,} |
+| **partner_alpha** (Test Partner Alpha) | {partner_summaries['partner_alpha']['farmers_sent']:,} | {partner_summaries['partner_alpha']['first_to_onboard']:,} | {partner_summaries['partner_alpha']['already_known']:,} |
+| **partner_beta** (Test Partner Beta) | {partner_summaries['partner_beta']['farmers_sent']:,} | {partner_summaries['partner_beta']['first_to_onboard']:,} | {partner_summaries['partner_beta']['already_known']:,} |
+| **partner_gamma** (Test Partner Gamma - CSV) | {partner_summaries['partner_gamma']['farmers_sent']:,} | {partner_summaries['partner_gamma']['first_to_onboard']:,} | {partner_summaries['partner_gamma']['already_known']:,} |
 
 ---
 
-## 3. Discrepancy Explanation & Mathematical Reconciliation
+## 3. Ground Truth Mathematical Reconciliation
 
-The Registry counts distinct **phone number hashes**, whereas the Ground Truth tracks distinct **human beings**. The delta of **{delta:+d}** is accounted for by two real-world agricultural field dynamics:
-
-### A. Shared Household Phones (-{shared_pairs} in Registry)
-- **Observation:** In rural Kenyan households, multiple family members frequently share a single mobile handset.
-- **Simulator Injection:** 5% of farmers ({dataset['summary']['shared_phone_individuals']} people, or {shared_pairs} pairs) shared a phone number with another farmer of different age/gender.
-- **Registry Impact:** Because the phone number is identical, the client SDK produces the identical HMAC hash. The registry de-duplicates them into a single record.
-- **Effect on Registry Unique Count:** Reduces registry unique count by **{shared_pairs}**.
-
-### B. Second SIM Cards (+{second_sims} in Registry)
-- **Observation:** Multi-SIM ownership is common in Kenya (e.g. holding both Safaricom 07... and Airtel 01... numbers to optimize coverage and tariffs).
-- **Simulator Injection:** 3% of farmers ({second_sims} people) owned two active SIM cards and registered with different partners using different numbers.
-- **Registry Impact:** Two distinct phone numbers generate two distinct HMAC hashes. The registry counts them as 2 unique farmers.
-- **Effect on Registry Unique Count:** Increases registry unique count by **{second_sims}**.
-
-### C. Consent Withdrawals (1%)
-- **Observation:** Under the Kenya Data Protection Act (KDPA), farmers may withdraw consent at any partner.
-- **Registry Impact:** When a farmer's last active partner link is deleted, the farmer record is permanently purged.
+The Registry counts distinct **phone number hashes**, whereas the Ground Truth tracks distinct **human beings**.
+The reconciliation calculation is derived rigorously from the ground truth file:
 
 $$\\begin{{aligned}}
-\\text{{Expected Registry Unique}} &\\approx \\text{{True Unique}} - \\text{{Shared Household Pairs}} + \\text{{Multi-SIM Holders}} \\\\
-&\\approx 3000 - {shared_pairs} + {second_sims} \\\\
-&\\approx {3000 - shared_pairs + second_sims}
+\\text{{Expected Registry Unique}} &= \\text{{Distinct Normalised Numbers Submitted}} - \\text{{Farmers Whose Every Partner Link Was Withdrawn}} \\\\
+&= {distinct_numbers} - {fully_withdrawn_farmers} \\\\
+&= {expected_registry_count}
 \\end{{aligned}}$$
 
-The observed registry unique count of **{registry_unique_farmers}** closely matches this expected theoretical value, verifying that the registry correctly de-duplicates cross-partner overlaps while preserving zero knowledge.
+### Detailed Audit Breakdown:
+1. **True Unique Human Beings:** {true_farmers}
+2. **Shared Household Phones Merged:** -{shared_phone_merges} ({dataset['summary']['shared_phone_pairs']} pairs sharing a handset)
+3. **Second SIMs Actually Used in Submissions:** +{second_sims_used}
+4. **Distinct Numbers Submitted:** {distinct_numbers}
+5. **Farmers with Every Link Withdrawn:** -{fully_withdrawn_farmers}
+6. **Expected Registry Unique Count:** {expected_registry_count}
+7. **Observed Registry Unique Count:** {registry_unique_farmers}
+8. **Discrepancy:** {difference:+d}
 
 ---
 
@@ -235,13 +268,13 @@ The observed registry unique count of **{registry_unique_farmers}** closely matc
     with open(report_path, "w", encoding="utf-8") as f:
         f.write(report_content)
 
-    print(f"\nSimulation complete! Report written to {report_path}")
-    print(f"\nSummary:")
-    print(f"  Partner Registrations Sent: {total_partner_registrations}")
-    print(f"  True Unique Farmers:        {true_individuals}")
-    print(f"  Registry Unique Farmers:    {registry_unique_farmers}")
-    print(f"  Difference:                 {delta:+d}")
-    print(f"  Cross-Partner Overlap:      {overlap_rate:.2f}%")
+    print(f"Simulation complete! Report written to {report_path}")
+
+    if difference != 0:
+        print(f"CRITICAL ERROR: Reconciliation difference is {difference} != 0!")
+        sys.exit(1)
+    else:
+        print("RECONCILIATION SUCCESS: Discrepancy is exactly 0.")
     print("=======================================================\n")
 
 if __name__ == "__main__":

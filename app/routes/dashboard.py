@@ -1,6 +1,8 @@
+import hmac
 from datetime import datetime, timezone
 from collections import defaultdict
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, HTTPException, status
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -12,18 +14,37 @@ from app.config import settings
 
 router = APIRouter(tags=["dashboard"])
 templates = Jinja2Templates(directory="app/templates")
+security = HTTPBasic()
 
-def apply_k_anonymity(count: int, threshold: int = settings.SUPPRESSION_THRESHOLD):
+def authenticate_dashboard(credentials: HTTPBasicCredentials = Depends(security)):
+    correct_user = hmac.compare_digest(credentials.username.encode("utf-8"), settings.DASHBOARD_USER.encode("utf-8"))
+    correct_pass = False
+    if settings.DASHBOARD_PASSWORD:
+        correct_pass = hmac.compare_digest(credentials.password.encode("utf-8"), settings.DASHBOARD_PASSWORD.encode("utf-8"))
+        
+    if not (correct_user and correct_pass):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect dashboard credentials",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
+
+def apply_k_anonymity(count: int, threshold: int = settings.SUPPRESSION_THRESHOLD) -> dict:
     """
     Suppresses any count under 5 to protect individual privacy.
-    Returns 0 or '<5' string representation.
+    Distinguishes true 0 from values 1..4 which are marked as '<5'.
     """
     if 0 < count < threshold:
-        return 0  # In chart data, suppress to 0 or group
-    return count
+        return {"value": 0, "display": "<5", "suppressed": True}
+    return {"value": count, "display": str(count), "suppressed": False}
 
 @router.get("/dashboard", response_class=HTMLResponse)
-def get_dashboard(request: Request, db: Session = Depends(get_db)):
+def get_dashboard(
+    request: Request,
+    _auth: str = Depends(authenticate_dashboard),
+    db: Session = Depends(get_db)
+):
     # 1. Total registrations (all active partner links)
     total_registrations = db.query(PartnerLink).filter(PartnerLink.status == "active").count()
     
@@ -67,8 +88,8 @@ def get_dashboard(request: Request, db: Session = Depends(get_db)):
     earliest_links = db.query(
         PartnerLink.farmer_id,
         PartnerLink.partner_id,
-        PartnerLink.linked_at
-    ).filter(PartnerLink.status == "active").order_by(PartnerLink.farmer_id, PartnerLink.linked_at.asc()).all()
+        PartnerLink.received_at
+    ).filter(PartnerLink.status == "active").order_by(PartnerLink.farmer_id, PartnerLink.received_at.asc()).all()
     
     seen_farmers = set()
     first_onboard_counts = defaultdict(int)

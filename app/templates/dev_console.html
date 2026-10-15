@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registry Dev Console - Kenya Farmer Hash Registry</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen">
+    <!-- Top Bar -->
+    <header class="border-b border-slate-800 bg-slate-950/80 backdrop-blur sticky top-0 z-50 px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">DEV ONLY</span>
+            <h1 class="text-lg font-bold text-white tracking-tight">Kenya Farmer Hash Registry — Interactive Test Console</h1>
+        </div>
+        <div class="flex items-center space-x-4 text-sm">
+            <a href="/dashboard" target="_blank" class="text-emerald-400 hover:text-emerald-300 font-medium">Open Production Dashboard &rarr;</a>
+            <span class="text-slate-500">|</span>
+            <span class="text-slate-400">Environment: <strong class="text-white">{{ env }}</strong></span>
+        </div>
+    </header>
+
+    <div class="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <!-- Left: Action & Test Controls (7 cols) -->
+        <div class="lg:col-span-7 space-y-6">
+            <!-- Parameter Form -->
+            <div class="bg-slate-800/80 rounded-xl border border-slate-700/60 p-5 shadow-lg">
+                <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400 mb-4">1. Test Parameters</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1">Sending Partner</label>
+                        <select id="partnerSelect" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-emerald-500">
+                            <option value="test_partner_a" data-key="test_partner_a_api_key_2026">Test Partner A (test_partner_a)</option>
+                            <option value="test_partner_b" data-key="test_partner_b_api_key_2026">Test Partner B (test_partner_b)</option>
+                            <option value="test_partner_c" data-key="test_partner_c_api_key_2026">Test Partner C (test_partner_c)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1">Partner Shared Secret (PARTNER_KEY)</label>
+                        <input id="partnerSecretKey" type="text" value="partner_shared_pilot_secret" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1">Kenyan Mobile Phone</label>
+                        <input id="phoneInput" type="text" value="0712 345 678" placeholder="e.g. 0712345678 or +254..." class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1">County Code</label>
+                        <select id="countyInput" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white">
+                            <option value="047">047 - Nairobi</option>
+                            <option value="032">032 - Nakuru</option>
+                            <option value="019">019 - Nyeri</option>
+                            <option value="042">042 - Kisumu</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1">Gender & Age Band</label>
+                        <div class="grid grid-cols-2 gap-2">
+                            <select id="genderInput" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-sm text-white">
+                                <option value="F">F (Female)</option>
+                                <option value="M">M (Male)</option>
+                            </select>
+                            <select id="ageBandInput" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-sm text-white">
+                                <option value="18-24">18-24</option>
+                                <option value="25-34" selected>25-34</option>
+                                <option value="35-44">35-44</option>
+                                <option value="45-54">45-54</option>
+                                <option value="55-64">55-64</option>
+                                <option value="65+">65+</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1">Onboarded At (UTC)</label>
+                        <input id="onboardedAtInput" type="text" value="2026-10-15T12:00:00Z" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono text-xs">
+                    </div>
+                </div>
+                <div class="mt-4 pt-3 border-t border-slate-700/60 flex items-center justify-between text-xs text-slate-400">
+                    <div>Computed Hash: <span id="computedHashPreview" class="font-mono text-emerald-400 font-semibold">computing...</span></div>
+                </div>
+            </div>
+
+            <!-- Action Buttons Grid -->
+            <div class="bg-slate-800/80 rounded-xl border border-slate-700/60 p-5 shadow-lg space-y-3">
+                <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400 mb-3">2. Execute Registry Actions</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button onclick="executeAction('register')" class="text-left p-3 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 font-medium transition flex items-center justify-between">
+                        <div>
+                            <div class="font-semibold text-white">1. Register Farmer</div>
+                            <div class="text-xs text-emerald-400/80">POST /v1/farmers with selected partner</div>
+                        </div>
+                        <span class="text-xl">&rarr;</span>
+                    </button>
+                    <button onclick="executeAction('resend')" class="text-left p-3 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-300 font-medium transition flex items-center justify-between">
+                        <div>
+                            <div class="font-semibold text-white">2. Resend Same Partner</div>
+                            <div class="text-xs text-blue-400/80">Idempotency check (no duplicate link)</div>
+                        </div>
+                        <span class="text-xl">&rarr;</span>
+                    </button>
+                    <button onclick="executeAction('overlap')" class="text-left p-3 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-purple-300 font-medium transition flex items-center justify-between">
+                        <div>
+                            <div class="font-semibold text-white">3. Register Overlap Partner</div>
+                            <div class="text-xs text-purple-400/80">Sends same phone with Test Partner B</div>
+                        </div>
+                        <span class="text-xl">&rarr;</span>
+                    </button>
+                    <button onclick="executeAction('backdate')" class="text-left p-3 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-300 font-medium transition flex items-center justify-between">
+                        <div>
+                            <div class="font-semibold text-white">4. Back-date Test</div>
+                            <div class="text-xs text-amber-400/80">Sends older onboarded_at for Partner B</div>
+                        </div>
+                        <span class="text-xl">&rarr;</span>
+                    </button>
+                    <button onclick="executeAction('withdraw')" class="text-left p-3 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 font-medium transition flex items-center justify-between">
+                        <div>
+                            <div class="font-semibold text-white">5. Withdraw Consent</div>
+                            <div class="text-xs text-rose-400/80">DELETE /v1/farmers/{hash}</div>
+                        </div>
+                        <span class="text-xl">&rarr;</span>
+                    </button>
+                    <button onclick="executeAction('replay')" class="text-left p-3 rounded-lg bg-red-950/40 hover:bg-red-900/50 border border-red-700/60 text-red-300 font-medium transition flex items-center justify-between">
+                        <div>
+                            <div class="font-semibold text-white">7. Replay Attack Test</div>
+                            <div class="text-xs text-red-400/80">Resend with identical nonce &rarr; 401</div>
+                        </div>
+                        <span class="text-xl">&rarr;</span>
+                    </button>
+                </div>
+
+                <!-- CSV Upload Box -->
+                <div class="mt-4 pt-4 border-t border-slate-700/60">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-semibold uppercase text-slate-300">6. Bulk CSV Upload (POST /v1/farmers:upload)</span>
+                        <a href="/dev/sample-csv" download class="text-xs text-emerald-400 hover:underline">Download 20-Row Sample CSV</a>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <input id="csvFileInput" type="file" accept=".csv" class="text-xs text-slate-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-slate-700 file:text-white hover:file:bg-slate-600">
+                        <button onclick="uploadSampleCSVDirectly()" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-xs text-white rounded-md font-medium">Load & Upload Sample</button>
+                        <button onclick="executeCsvUpload()" class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-xs text-white rounded-md font-semibold">Upload Selected File</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Inspector Panel -->
+            <div class="bg-slate-800/80 rounded-xl border border-slate-700/60 p-5 shadow-lg">
+                <div class="flex items-center justify-between mb-2">
+                    <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Response Inspector</h2>
+                    <span id="responseStatusBadge" class="hidden text-xs font-mono px-2 py-0.5 rounded font-bold"></span>
+                </div>
+                <div class="space-y-2 text-xs font-mono">
+                    <div><span class="text-slate-500">Request:</span> <span id="reqMethodUrl" class="text-slate-300">-</span></div>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-slate-300 overflow-x-auto max-h-48 whitespace-pre" id="responseBodyPreview">// Execute an action to see response output</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: Unsuppressed Metrics & Verification Panel (5 cols) -->
+        <div class="lg:col-span-5 space-y-6">
+            <div class="bg-slate-800/80 rounded-xl border border-slate-700/60 p-5 shadow-lg">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Live Unsuppressed Metrics</h2>
+                    <button onclick="refreshMetrics()" class="text-xs text-emerald-400 hover:underline">Refresh</button>
+                </div>
+                
+                <div class="grid grid-cols-3 gap-3 mb-4">
+                    <div class="bg-slate-900 p-3 rounded-lg border border-slate-700/50 text-center">
+                        <div class="text-xs text-slate-400">Unique Farmers</div>
+                        <div id="statUniqueFarmers" class="text-2xl font-bold text-white mt-1">-</div>
+                    </div>
+                    <div class="bg-slate-900 p-3 rounded-lg border border-slate-700/50 text-center">
+                        <div class="text-xs text-slate-400">Active Links</div>
+                        <div id="statActiveLinks" class="text-2xl font-bold text-emerald-400 mt-1">-</div>
+                    </div>
+                    <div class="bg-slate-900 p-3 rounded-lg border border-slate-700/50 text-center">
+                        <div class="text-xs text-slate-400">Withdrawn</div>
+                        <div id="statRemovedLinks" class="text-2xl font-bold text-rose-400 mt-1">-</div>
+                    </div>
+                </div>
+
+                <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Partner Breakdown</h3>
+                <div id="partnerBreakdownList" class="space-y-2 mb-4">
+                    <!-- Dynamic -->
+                </div>
+
+                <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Recent Link Events (Audit Trail)</h3>
+                <div class="overflow-hidden rounded-lg border border-slate-700/50 max-h-64 overflow-y-auto">
+                    <table class="w-full text-left text-xs font-mono">
+                        <thead class="bg-slate-950 text-slate-400 border-b border-slate-800">
+                            <tr>
+                                <th class="p-2">Partner</th>
+                                <th class="p-2">Code</th>
+                                <th class="p-2">Received At</th>
+                                <th class="p-2">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recentEventsTable" class="divide-y divide-slate-800 text-slate-300">
+                            <tr><td colspan="4" class="p-2 text-center text-slate-500">Loading events...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Developer Hints Box -->
+            <div class="bg-slate-900/90 rounded-xl border border-slate-800 p-4 text-xs text-slate-400 space-y-2">
+                <div class="font-semibold text-slate-300 uppercase tracking-wider">Zero-Knowledge Invariants:</div>
+                <ul class="list-disc list-inside space-y-1 text-slate-400">
+                    <li>Registry stores only double-keyed code ($H(\text{SERVER\_KEY}, H(\text{PARTNER\_KEY}, \text{phone}))$).</li>
+                    <li>First-to-onboard credit is determined strictly by <code class="text-emerald-400">received_at</code> (server arrival time).</li>
+                    <li>Consent withdrawal deletes the partner link; if no active links remain, the farmer record is permanently purged.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Client-side Cryptography & Runner Script -->
+    <script>
+        let lastSentRequest = null;
+
+        // Normalise Kenyan Phone
+        function normaliseKenyanPhone(phone) {
+            let cleaned = phone.replace(/[\s\-\.\(\)]/g, "").trim();
+            if (/^0\d{9}$/.test(cleaned)) cleaned = "+254" + cleaned.substring(1);
+            else if (/^254\d{9}$/.test(cleaned)) cleaned = "+" + cleaned;
+            else if (/^[71]\d{8}$/.test(cleaned)) cleaned = "+254" + cleaned;
+            
+            if (!/^\+254[71]\d{8}$/.test(cleaned)) {
+                throw new Error("Invalid Kenyan phone number format. Must be +254 7... or +254 1...");
+            }
+            return cleaned;
+        }
+
+        // Web Crypto SHA-256
+        async function sha256Hex(str) {
+            const enc = new TextEncoder();
+            const hashBuf = await crypto.subtle.digest("SHA-256", enc.encode(str));
+            return Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, "0")).join("");
+        }
+
+        // Web Crypto HMAC-SHA256
+        async function hmacSha256Hex(keyStr, dataStr) {
+            const enc = new TextEncoder();
+            const keyBuf = enc.encode(keyStr);
+            const dataBuf = enc.encode(dataStr);
+            const cryptoKey = await crypto.subtle.importKey(
+                "raw", keyBuf, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+            );
+            const sigBuf = await crypto.subtle.sign("HMAC", cryptoKey, dataBuf);
+            return Array.from(new Uint8Array(sigBuf)).map(b => b.toString(16).padStart(2, "0")).join("");
+        }
+
+        // Compute Client Hash: HMAC-SHA256(PARTNER_KEY, "ke-farmer:v1:" + norm_phone)
+        async function computeClientHash() {
+            try {
+                const phone = document.getElementById("phoneInput").value;
+                const key = document.getElementById("partnerSecretKey").value;
+                const norm = normaliseKenyanPhone(phone);
+                const hash = await hmacSha256Hex(key, "ke-farmer:v1:" + norm);
+                document.getElementById("computedHashPreview").innerText = hash;
+                return { norm, hash };
+            } catch (err) {
+                document.getElementById("computedHashPreview").innerText = "Error: " + err.message;
+                return null;
+            }
+        }
+
+        // Generate Signature v2 headers
+        async function buildSignatureV2Headers(partnerId, apiKey, method, path, query, bodyStr, forcedNonce = null, forcedTimestamp = null) {
+            const timestamp = forcedTimestamp || Math.floor(Date.now() / 1000).toString();
+            const nonce = forcedNonce || Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2, "0")).join("");
+            const bodyHash = await sha256Hex(bodyStr);
+            const canonical = `${method.toUpperCase()}\n${path}\n${query}\n${timestamp}\n${nonce}\n${bodyHash}`;
+            const sig = await hmacSha256Hex(apiKey, canonical);
+
+            return {
+                "X-Partner-Key": apiKey,
+                "X-Timestamp": timestamp,
+                "X-Nonce": nonce,
+                "X-Signature": sig
+            };
+        }
+
+        document.getElementById("phoneInput").addEventListener("input", computeClientHash);
+        document.getElementById("partnerSecretKey").addEventListener("input", computeClientHash);
+
+        async function executeAction(actionType) {
+            const hRes = await computeClientHash();
+            if (!hRes) return;
+            const hash = hRes.hash;
+
+            const partnerSelect = document.getElementById("partnerSelect");
+            let partnerId = partnerSelect.value;
+            let apiKey = partnerSelect.selectedOptions[0].dataset.key;
+
+            let method = "POST";
+            let path = "/v1/farmers";
+            let bodyObj = null;
+            let bodyStr = "";
+
+            if (actionType === "register") {
+                bodyObj = {
+                    hash: hash,
+                    gender: document.getElementById("genderInput").value,
+                    age_band: document.getElementById("ageBandInput").value,
+                    county_code: document.getElementById("countyInput").value,
+                    onboarded_at: document.getElementById("onboardedAtInput").value
+                };
+                bodyStr = JSON.stringify(bodyObj);
+            } else if (actionType === "resend") {
+                bodyObj = {
+                    hash: hash,
+                    gender: document.getElementById("genderInput").value,
+                    age_band: document.getElementById("ageBandInput").value,
+                    county_code: document.getElementById("countyInput").value,
+                    onboarded_at: document.getElementById("onboardedAtInput").value
+                };
+                bodyStr = JSON.stringify(bodyObj);
+            } else if (actionType === "overlap") {
+                partnerId = "test_partner_b";
+                apiKey = "test_partner_b_api_key_2026";
+                bodyObj = {
+                    hash: hash,
+                    gender: document.getElementById("genderInput").value,
+                    age_band: document.getElementById("ageBandInput").value,
+                    county_code: document.getElementById("countyInput").value,
+                    onboarded_at: document.getElementById("onboardedAtInput").value
+                };
+                bodyStr = JSON.stringify(bodyObj);
+            } else if (actionType === "backdate") {
+                partnerId = "test_partner_b";
+                apiKey = "test_partner_b_api_key_2026";
+                bodyObj = {
+                    hash: hash,
+                    gender: document.getElementById("genderInput").value,
+                    age_band: document.getElementById("ageBandInput").value,
+                    county_code: document.getElementById("countyInput").value,
+                    onboarded_at: "2026-10-02T10:00:00Z"
+                };
+                bodyStr = JSON.stringify(bodyObj);
+            } else if (actionType === "withdraw") {
+                method = "DELETE";
+                path = `/v1/farmers/${hash}`;
+                bodyStr = "";
+            } else if (actionType === "replay") {
+                if (!lastSentRequest) {
+                    alert("No previous request available to replay! Please perform a registration first.");
+                    return;
+                }
+                // Replay previous request with identical headers
+                const resp = await fetch(lastSentRequest.url, {
+                    method: lastSentRequest.method,
+                    headers: lastSentRequest.headers,
+                    body: lastSentRequest.body || undefined
+                });
+                renderResponse(lastSentRequest.method, lastSentRequest.url, resp);
+                refreshMetrics();
+                return;
+            }
+
+            const headers = await buildSignatureV2Headers(partnerId, apiKey, method, path, "", bodyStr);
+            if (bodyStr) headers["Content-Type"] = "application/json";
+
+            lastSentRequest = {
+                method: method,
+                url: path,
+                headers: Object.assign({}, headers),
+                body: bodyStr
+            };
+
+            const resp = await fetch(path, {
+                method: method,
+                headers: headers,
+                body: bodyStr || undefined
+            });
+
+            renderResponse(method, path, resp);
+            refreshMetrics();
+        }
+
+        async function executeCsvUpload() {
+            const fileInput = document.getElementById("csvFileInput");
+            if (!fileInput.files.length) {
+                alert("Please select a CSV file first, or click 'Load & Upload Sample'.");
+                return;
+            }
+            const file = fileInput.files[0];
+            const text = await file.text();
+            await uploadCsvBytes(text);
+        }
+
+        async function uploadSampleCSVDirectly() {
+            const sampleResp = await fetch("/dev/sample-csv");
+            if (!sampleResp.ok) {
+                alert("Failed to load sample CSV: " + sampleResp.statusText);
+                return;
+            }
+            const text = await sampleResp.text();
+            await uploadCsvBytes(text);
+        }
+
+        async function uploadCsvBytes(csvText) {
+            const partnerId = "test_partner_c";
+            const apiKey = "test_partner_c_api_key_2026";
+            const path = "/v1/farmers:upload";
+            const method = "POST";
+
+            const headers = await buildSignatureV2Headers(partnerId, apiKey, method, path, "", csvText);
+            headers["Content-Type"] = "text/csv";
+
+            const resp = await fetch(path, {
+                method: method,
+                headers: headers,
+                body: csvText
+            });
+
+            renderResponse(method, path, resp);
+            refreshMetrics();
+        }
+
+        async function renderResponse(method, url, resp) {
+            const badge = document.getElementById("responseStatusBadge");
+            badge.innerText = `${resp.status} ${resp.statusText}`;
+            badge.className = resp.ok ? "text-xs font-mono px-2 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "text-xs font-mono px-2 py-0.5 rounded font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30";
+            badge.classList.remove("hidden");
+
+            document.getElementById("reqMethodUrl").innerText = `${method} ${url}`;
+
+            let data;
+            const text = await resp.text();
+            try {
+                data = JSON.stringify(JSON.parse(text), null, 2);
+            } catch (e) {
+                data = text;
+            }
+            document.getElementById("responseBodyPreview").innerText = data;
+        }
+
+        async function refreshMetrics() {
+            try {
+                const resp = await fetch("/dev/unsuppressed-metrics");
+                if (!resp.ok) return;
+                const m = await resp.json();
+
+                document.getElementById("statUniqueFarmers").innerText = m.total_unique_farmers;
+                document.getElementById("statActiveLinks").innerText = m.total_active_links;
+                document.getElementById("statRemovedLinks").innerText = m.total_removed_links;
+
+                const pList = document.getElementById("partnerBreakdownList");
+                pList.innerHTML = m.partners.map(p => `
+                    <div class="flex items-center justify-between text-xs bg-slate-900/60 p-2 rounded border border-slate-800">
+                        <span class="text-slate-300 font-medium">${p.name} (${p.partner_id})</span>
+                        <span class="font-mono ${p.active ? 'text-emerald-400' : 'text-slate-500 line-through'} font-bold">${p.active_links} links</span>
+                    </div>
+                `).join("");
+
+                const eventsTbody = document.getElementById("recentEventsTable");
+                if (!m.recent_links.length) {
+                    eventsTbody.innerHTML = '<tr><td colspan="4" class="p-2 text-center text-slate-500">No events yet. Register a farmer to begin.</td></tr>';
+                } else {
+                    eventsTbody.innerHTML = m.recent_links.map(l => `
+                        <tr>
+                            <td class="p-2 font-medium text-slate-200">${l.partner_id}</td>
+                            <td class="p-2 text-slate-400">${l.farmer_code}</td>
+                            <td class="p-2 text-slate-400">${l.received_at ? l.received_at.split('T')[1].substring(0,8) : '-'}</td>
+                            <td class="p-2"><span class="px-1.5 py-0.5 rounded text-[10px] ${l.status === 'active' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}">${l.status}</span></td>
+                        </tr>
+                    `).join("");
+                }
+            } catch (e) {
+                console.error("Failed to refresh metrics:", e);
+            }
+        }
+
+        // Init
+        computeClientHash();
+        refreshMetrics();
+    </script>
+</body>
+</html>

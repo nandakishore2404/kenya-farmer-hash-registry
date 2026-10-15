@@ -1,6 +1,7 @@
 import json
 import requests
 import pytest
+from app.config import settings
 from app.hashing import compute_request_signature, rekey_hash
 from app.models import Farmer, PartnerLink, AuditLog
 from sdk.python.hasher import hash_phone
@@ -115,9 +116,9 @@ def test_csv_upload_backfill(client, db_session):
     h3 = hash_phone(phone3, PARTNER_KEY)
     
     csv_data = f"""hash,gender,age_band,county_code,onboarded_at
-{h2},M,35-44,032,2026-09-01T10:00:00
-{h3},F,18-24,019,2026-09-02T11:00:00
-invalid_hash_string,F,18-24,019,2026-09-02T11:00:00
+{h2},M,35-44,032,2026-10-02T10:00:00
+{h3},F,18-24,019,2026-10-03T11:00:00
+invalid_hash_string,F,18-24,019,2026-10-03T11:00:00
 """
     file_bytes = csv_data.encode("utf-8")
     
@@ -133,7 +134,8 @@ invalid_hash_string,F,18-24,019,2026-09-02T11:00:00
     res = client.post("/v1/farmers:upload", content=prep.body, headers=headers)
     assert res.status_code == 200
     data = res.json()
-    assert data["rows_received"] == 2
+    assert data["rows_received"] == 3
+    assert data["rows_accepted"] == 2
     assert data["rows_rejected"] == 1
 
 
@@ -180,7 +182,12 @@ def test_admin_lookup(client):
 
 
 def test_dashboard_page(client):
-    res = client.get("/dashboard")
+    import base64
+    user = settings.DASHBOARD_USER
+    pwd = settings.DASHBOARD_PASSWORD
+    token = base64.b64encode(f"{user}:{pwd}".encode("utf-8")).decode("ascii")
+    headers = {"Authorization": f"Basic {token}"}
+    res = client.get("/dashboard", headers=headers)
     assert res.status_code == 200
     assert "Kenya Agricultural Advisory Pilot" in res.text
     assert "Chart.js" in res.text or "chart.umd.min.js" in res.text

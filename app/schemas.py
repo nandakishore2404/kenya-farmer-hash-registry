@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Literal, Optional, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 GenderType = Literal["F", "M", "U"]
 AgeBandType = Literal["<18", "18-24", "25-34", "35-44", "45-54", "55-64", "65+", "U"]
@@ -12,11 +12,35 @@ class FarmerRegisterRequest(BaseModel):
     county_code: str = Field(..., min_length=1, max_length=10)
     onboarded_at: Optional[datetime] = None
 
+    @field_validator("onboarded_at")
+    @classmethod
+    def validate_onboarded_at(cls, v: Optional[datetime]) -> Optional[datetime]:
+        if v is None:
+            return v
+        from datetime import timezone, timedelta
+        from app.config import settings
+        
+        # Ensure UTC timezone
+        dt = v if v.tzinfo else v.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        
+        # Reject future dates > 5 minutes
+        if dt > now + timedelta(minutes=5):
+            raise ValueError("onboarded_at cannot be more than 5 minutes in the future")
+            
+        # Reject dates earlier than PILOT_START_DATE
+        pilot_start = datetime.fromisoformat(settings.PILOT_START_DATE).replace(tzinfo=timezone.utc)
+        if dt < pilot_start:
+            raise ValueError(f"onboarded_at cannot be earlier than pilot start date ({settings.PILOT_START_DATE})")
+            
+        return v
+
 class StatusAcceptedResponse(BaseModel):
     status: Literal["accepted"] = "accepted"
 
 class UploadResponse(BaseModel):
     rows_received: int
+    rows_accepted: int
     rows_rejected: int
 
 class PartnerSummaryResponse(BaseModel):

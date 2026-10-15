@@ -32,10 +32,11 @@ def get_partner_summary(
     already_known = 0
     
     for link in active_links:
-        # Determine the earliest linked_at for this farmer
+        # Determine the earliest received_at for this farmer
         earliest_link = db.query(PartnerLink).filter(
-            PartnerLink.farmer_id == link.farmer_id
-        ).order_by(PartnerLink.linked_at.asc(), PartnerLink.id.asc()).first()
+            PartnerLink.farmer_id == link.farmer_id,
+            PartnerLink.status == "active"
+        ).order_by(PartnerLink.received_at.asc(), PartnerLink.id.asc()).first()
         
         if earliest_link and earliest_link.partner_id == partner.partner_id:
             first_to_onboard += 1

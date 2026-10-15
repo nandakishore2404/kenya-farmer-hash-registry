@@ -1,6 +1,8 @@
-# Farmer Phone Hashing SDK
+# Farmer Phone Hashing & Request Signing SDK
 
-This SDK provides client-side phone number normalisation and keyed HMAC hashing for delivery partners participating in the Kenya Agricultural Advisory Registry.
+This SDK provides client-side phone number normalisation, keyed HMAC hashing, and request signing (Signature v2) for delivery partners participating in the Kenya Agricultural Advisory Registry.
+
+---
 
 ## Plain-Language Privacy Notice: Why a Keyed Hash?
 
@@ -33,32 +35,51 @@ All phone numbers are cleaned and converted into standard E.164 format:
 - `07XXXXXXXX` or `01XXXXXXXX` (10 digits) $\rightarrow$ `+2547XXXXXXXX` / `+2541XXXXXXXX`
 - `2547XXXXXXXX` or `2541XXXXXXXX` (12 digits) $\rightarrow$ `+2547XXXXXXXX` / `+2541XXXXXXXX`
 - `7XXXXXXXX` or `1XXXXXXXX` (9 digits) $\rightarrow$ `+2547XXXXXXXX` / `+2541XXXXXXXX`
-- Numbers must match `^\+254(7|1)\d{8}$` or `InvalidPhone` error is thrown.
+- Numbers must match `^\+254(7|1)\d{8}$` or an `InvalidPhone` error is raised.
 
 ---
 
 ## Usage Examples
 
-### Python
+### 1. Python SDK
+
 ```python
-from sdk.python.hasher import normalise_phone, hash_phone
+from sdk.python.hasher import normalise_phone, hash_phone, sign_request
+import requests
 
 PARTNER_KEY = "partner_shared_pilot_secret"
+API_KEY = "test_partner_a_api_key_2026"
 phone = "0712-345-678"
 
 # 1. Normalise
-norm = normalise_phone(phone) # -> "+254712345678"
+norm = normalise_phone(phone)  # -> "+254712345678"
 
 # 2. Hash
-farmer_hash = hash_phone(phone, PARTNER_KEY)
-print(farmer_hash) # 64-char hex string
+farmer_hash = hash_phone(phone, PARTNER_KEY)  # 64-char hex string
+
+# 3. Sign and Send Request (Signature v2)
+payload = {
+    "hash": farmer_hash,
+    "gender": "F",
+    "age_band": "25-34",
+    "county_code": "047",
+    "onboarded_at": "2026-10-15T10:00:00Z"
+}
+body_bytes = json.dumps(payload).encode("utf-8")
+headers = sign_request(API_KEY, "POST", "/v1/farmers", "", body_bytes)
+headers["Content-Type"] = "application/json"
+
+resp = requests.post("http://localhost:8008/v1/farmers", data=body_bytes, headers=headers)
+print(resp.json())  # -> {"status": "accepted"}
 ```
 
-### JavaScript / Node.js
+### 2. JavaScript / Node.js SDK
+
 ```javascript
-const { normalisePhone, hashPhone } = require('./hasher');
+const { normalisePhone, hashPhone, signRequest } = require('./hasher');
 
 const PARTNER_KEY = 'partner_shared_pilot_secret';
+const API_KEY = 'test_partner_a_api_key_2026';
 const phone = '0712-345-678';
 
 // 1. Normalise
@@ -66,5 +87,32 @@ const norm = normalisePhone(phone); // -> "+254712345678"
 
 // 2. Hash
 const farmerHash = hashPhone(phone, PARTNER_KEY);
-console.log(farmerHash); // 64-char hex string
+
+// 3. Sign Request (Signature v2)
+const body = JSON.stringify({
+    hash: farmerHash,
+    gender: "F",
+    age_band: "25-34",
+    county_code: "047",
+    onboarded_at: "2026-10-15T10:00:00Z"
+});
+
+const headers = signRequest(API_KEY, "POST", "/v1/farmers", "", body);
+// Returns: { "X-Partner-Key", "X-Timestamp", "X-Nonce", "X-Signature" }
+```
+
+---
+
+## 3. Command-Line Hashing Tool
+
+Generate hashes directly from your shell without writing code:
+
+```bash
+python -m sdk.python.hasher --phone "0712 345 678" --key "partner_shared_pilot_secret"
+```
+
+Output:
+```
+Normalised: +254712345678
+Hash:       68ef61470b4d31e36b10fd399f17078a0b41198beddf846ae4defc69385e3fe6
 ```

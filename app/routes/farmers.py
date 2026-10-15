@@ -35,7 +35,20 @@ def process_farmer_registration(
     onboarded_at: Optional[datetime] = None
 ) -> None:
     now = datetime.now(timezone.utc)
-    ts = onboarded_at or now
+    # Validate onboarded_at bounds if provided
+    if onboarded_at:
+        dt = onboarded_at if onboarded_at.tzinfo else onboarded_at.replace(tzinfo=timezone.utc)
+        from datetime import timedelta
+        if dt > now + timedelta(minutes=5):
+            raise ValueError("onboarded_at cannot be more than 5 minutes in the future")
+        from app.config import settings
+        pilot_start = datetime.fromisoformat(settings.PILOT_START_DATE).replace(tzinfo=timezone.utc)
+        if dt < pilot_start:
+            raise ValueError("onboarded_at cannot be earlier than pilot start date")
+        ts = dt
+    else:
+        ts = now
+        
     hash_key = rekey_hash(incoming_hash)
     
     farmer = db.query(Farmer).filter(Farmer.hash_key == hash_key).first()
@@ -47,8 +60,8 @@ def process_farmer_registration(
             gender=gender,
             age_band=age_band,
             county_code=county_code,
-            created_at=ts,
-            updated_at=ts
+            created_at=now,
+            updated_at=now
         )
         db.add(new_farmer)
         db.flush()
@@ -57,6 +70,7 @@ def process_farmer_registration(
             farmer_id=new_farmer.id,
             partner_id=partner_id,
             linked_at=ts,
+            received_at=now,
             status="active"
         )
         db.add(new_link)
@@ -102,6 +116,7 @@ def process_farmer_registration(
                 farmer_id=farmer.id,
                 partner_id=partner_id,
                 linked_at=ts,
+                received_at=now,
                 status="active"
             )
             db.add(new_link)
@@ -173,8 +188,10 @@ async def upload_farmers_csv(
     
     reader = csv.reader(io.StringIO(text))
     rows_received = 0
+    rows_accepted = 0
     rows_rejected = 0
     
+    seen_in_batch = set()
     first_row = True
     for row in reader:
         if not row or all(c.strip() == "" for c in row):
@@ -185,6 +202,8 @@ async def upload_farmers_csv(
             first_row = False
             continue
         first_row = False
+        
+        rows_received += 1
         
         if len(row) < 4:
             rows_rejected += 1
@@ -212,24 +231,36 @@ async def upload_farmers_csv(
         
         dt = parse_iso_datetime(row_onboarded_at)
         
+        # Check in-file repeat
+        if row_hash in seen_in_batch:
+            # Repeat inside same file: count as accepted resend
+            rows_accepted += 1
+            continue
+        
         try:
-            process_farmer_registration(
-                db=db,
-                partner_id=partner.partner_id,
-                incoming_hash=row_hash,
-                gender=row_gender,
-                age_band=row_age_band,
-                county_code=row_county,
-                onboarded_at=dt
-            )
-            rows_received += 1
+            with db.begin_nested():
+                process_farmer_registration(
+                    db=db,
+                    partner_id=partner.partner_id,
+                    incoming_hash=row_hash,
+                    gender=row_gender,
+                    age_band=row_age_band,
+                    county_code=row_county,
+                    onboarded_at=dt
+                )
+                db.flush()
+            seen_in_batch.add(row_hash)
+            rows_accepted += 1
         except Exception:
             rows_rejected += 1
-            db.rollback()
             continue
 
     db.commit()
-    return UploadResponse(rows_received=rows_received, rows_rejected=rows_rejected)
+    return UploadResponse(
+        rows_received=rows_received,
+        rows_accepted=rows_accepted,
+        rows_rejected=rows_rejected
+    )
 
 
 @router.delete("/{incoming_hash}", response_model=StatusAcceptedResponse)

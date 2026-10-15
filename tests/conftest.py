@@ -11,7 +11,7 @@ os.environ["ADMIN_KEY"] = "test_admin_key_super_secret"
 
 from app.config import settings
 from app.database import Base, get_db
-from app.main import app, DEFAULT_PARTNERS
+from app.main import app, TEST_PARTNERS
 from app.models import Partner
 from app.hashing import hash_api_key
 
@@ -26,11 +26,12 @@ def setup_test_db():
     
     # Pre-seed partners
     db = TestingSessionLocal()
-    for p in DEFAULT_PARTNERS:
+    for p in TEST_PARTNERS:
         db.add(Partner(
             partner_id=p["partner_id"],
             name=p["name"],
-            api_key_hash=hash_api_key(p["api_key"])
+            api_key_hash=hash_api_key(p["api_key"]),
+            active=1
         ))
     db.commit()
     db.close()

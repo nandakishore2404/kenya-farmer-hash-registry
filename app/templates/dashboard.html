@@ -160,10 +160,12 @@
 
     <!-- Top Key Metrics -->
     <div class="metric-grid">
+    <!-- Top Key Metrics -->
+    <div class="metric-grid">
       <div class="metric-card">
-        <h3>Total Partner Registrations</h3>
+        <h3>Active Partner Registrations</h3>
         <div class="value">{{ total_registrations }}</div>
-        <div class="subtext">Cumulative partner registrations received</div>
+        <div class="subtext">Active partner registrations across all partners</div>
       </div>
       <div class="metric-card">
         <h3>Unique Verified Farmers</h3>
@@ -173,7 +175,7 @@
       <div class="metric-card">
         <h3>Cross-Partner Overlap Rate</h3>
         <div class="value" style="color: #0284c7;">{{ overlap_rate }}%</div>
-        <div class="subtext">1 - (Unique Farmers / Total Registrations)</div>
+        <div class="subtext">1 - (Unique Farmers / Total Active Registrations)</div>
       </div>
     </div>
 
@@ -232,20 +234,51 @@
     const creditData = {{ first_credit | tojson }};
     const trendData = {{ weekly_trend | tojson }};
 
+    function getValues(obj) {
+      return Object.values(obj).map(v => typeof v === 'object' ? v.value : v);
+    }
+
+    function getTooltipCallback(obj) {
+      return {
+        label: function(context) {
+          const key = context.label;
+          const entry = obj[key] || (context.dataset && obj[Object.keys(obj)[context.dataIndex]]);
+          if (entry && typeof entry === 'object' && entry.suppressed) {
+            return `${context.dataset.label || 'Count'}: <5 (suppressed for privacy)`;
+          }
+          return `${context.dataset.label || 'Count'}: ${context.raw}`;
+        }
+      };
+    }
+
     // 1. Gender Doughnut Chart
     new Chart(document.getElementById('genderChart'), {
       type: 'doughnut',
       data: {
         labels: Object.keys(genderData),
         datasets: [{
-          data: Object.values(genderData),
+          data: getValues(genderData),
           backgroundColor: ['#059669', '#0284c7', '#94a3b8']
         }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { position: 'bottom' } }
+        plugins: {
+          legend: { position: 'bottom' },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                const key = context.label;
+                const entry = genderData[key];
+                if (entry && entry.suppressed) {
+                  return `${key}: <5 (suppressed for privacy)`;
+                }
+                return `${key}: ${context.raw}`;
+              }
+            }
+          }
+        }
       }
     });
 
@@ -256,7 +289,7 @@
         labels: Object.keys(ageData),
         datasets: [{
           label: 'Farmers',
-          data: Object.values(ageData),
+          data: getValues(ageData),
           backgroundColor: '#0284c7'
         }]
       },
@@ -264,7 +297,10 @@
         responsive: true,
         maintainAspectRatio: false,
         scales: { y: { beginAtZero: true } },
-        plugins: { legend: { display: false } }
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: getTooltipCallback(ageData) }
+        }
       }
     });
 
@@ -275,7 +311,7 @@
         labels: Object.keys(countyData).map(c => 'County ' + c),
         datasets: [{
           label: 'Farmers',
-          data: Object.values(countyData),
+          data: getValues(countyData),
           backgroundColor: '#10b981'
         }]
       },
@@ -283,7 +319,10 @@
         responsive: true,
         maintainAspectRatio: false,
         scales: { y: { beginAtZero: true } },
-        plugins: { legend: { display: false } }
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: getTooltipCallback(countyData) }
+        }
       }
     });
 
@@ -294,7 +333,7 @@
         labels: Object.keys(creditData),
         datasets: [{
           label: 'First-to-Onboard Credit',
-          data: Object.values(creditData),
+          data: getValues(creditData),
           backgroundColor: ['#6366f1', '#f59e0b', '#ec4899', '#8b5cf6']
         }]
       },
@@ -302,7 +341,10 @@
         responsive: true,
         maintainAspectRatio: false,
         scales: { y: { beginAtZero: true } },
-        plugins: { legend: { display: false } }
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: getTooltipCallback(creditData) }
+        }
       }
     });
 
@@ -313,7 +355,7 @@
         labels: Object.keys(trendData).length ? Object.keys(trendData) : ['Current Week'],
         datasets: [{
           label: 'Farmers Onboarded',
-          data: Object.values(trendData).length ? Object.values(trendData) : [0],
+          data: getValues(trendData).length ? getValues(trendData) : [0],
           borderColor: '#059669',
           backgroundColor: 'rgba(5, 150, 105, 0.1)',
           fill: true,
@@ -324,7 +366,10 @@
         responsive: true,
         maintainAspectRatio: false,
         scales: { y: { beginAtZero: true } },
-        plugins: { legend: { display: false } }
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: getTooltipCallback(trendData) }
+        }
       }
     });
   </script>

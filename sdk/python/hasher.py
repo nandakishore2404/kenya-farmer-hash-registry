@@ -48,3 +48,64 @@ def hash_phone(phone: str, partner_key: str | bytes) -> str:
     
     message = f"ke-farmer:v1:{norm}".encode("utf-8")
     return hmac.new(partner_key, message, hashlib.sha256).hexdigest()
+
+def sign_request(
+    api_key: str,
+    method: str,
+    path: str,
+    query: str = "",
+    body: bytes | str = b"",
+    timestamp: int | str | None = None,
+    nonce: str | None = None
+) -> dict:
+    """
+    Constructs signature v2 and returns dictionary of headers:
+    X-Partner-Key, X-Timestamp, X-Nonce, X-Signature.
+    """
+    import time
+    import secrets
+    
+    if timestamp is None:
+        timestamp_str = str(int(time.time()))
+    else:
+        timestamp_str = str(timestamp)
+        
+    if nonce is None:
+        nonce_str = secrets.token_hex(16)
+    else:
+        nonce_str = str(nonce)
+        
+    if isinstance(body, str):
+        body_bytes = body.encode("utf-8")
+    else:
+        body_bytes = body or b""
+        
+    body_hash = hashlib.sha256(body_bytes).hexdigest()
+    canonical_str = f"{method.upper()}\n{path}\n{query}\n{timestamp_str}\n{nonce_str}\n{body_hash}"
+    key = api_key.strip().encode("utf-8")
+    sig = hmac.new(key, canonical_str.encode("utf-8"), hashlib.sha256).hexdigest()
+    
+    return {
+        "X-Partner-Key": api_key,
+        "X-Timestamp": timestamp_str,
+        "X-Nonce": nonce_str,
+        "X-Signature": sig
+    }
+
+if __name__ == "__main__":
+    import argparse
+    import sys
+    parser = argparse.ArgumentParser(description="Normalise and hash a Kenyan phone number")
+    parser.add_argument("--phone", required=True, help="Kenyan phone number to hash")
+    parser.add_argument("--key", required=True, help="Partner secret key")
+    args = parser.parse_args()
+
+    try:
+        norm = normalise_phone(args.phone)
+        h = hash_phone(args.phone, args.key)
+        print(f"Normalised: {norm}")
+        print(f"Hash:       {h}")
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+

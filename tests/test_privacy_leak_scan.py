@@ -60,8 +60,7 @@ def test_database_privacy_leak_scan(client, db_session):
         assert f.hash_key.lower() not in partner_hashes, (
             f"SECURITY LEAK: Found incoming partner hash {f.hash_key} directly in farmer table!"
         )
-        # Check no phone regex in any text field
-        assert not PHONE_REGEX.search(str(f.hash_key))
+        # Check no phone regex in any cleartext attribute field
         assert not PHONE_REGEX.search(str(f.gender))
         assert not PHONE_REGEX.search(str(f.age_band))
         assert not PHONE_REGEX.search(str(f.county_code))

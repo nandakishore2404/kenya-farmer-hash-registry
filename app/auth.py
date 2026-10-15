@@ -7,17 +7,26 @@ from app.database import get_db
 from app.models import Partner
 from app.hashing import hash_api_key, compute_request_signature
 
+import time
+from datetime import datetime, timezone, timedelta
+from app.models import Partner, RequestNonce
+from app.hashing import hash_api_key, compute_request_signature_v2, compute_request_signature
+
 async def authenticate_partner(
     request: Request,
     x_partner_key: Optional[str] = Header(None, alias="X-Partner-Key"),
     x_signature: Optional[str] = Header(None, alias="X-Signature"),
+    x_timestamp: Optional[str] = Header(None, alias="X-Timestamp"),
+    x_nonce: Optional[str] = Header(None, alias="X-Nonce"),
     db: Session = Depends(get_db)
 ) -> Partner:
     """
     Authenticates delivery partner requests:
-    1. Looks up partner by SHA-256 hash of X-Partner-Key
-    2. Validates HMAC-SHA256 signature of request body using X-Partner-Key
-    3. Rejects invalid partner keys or bad signatures with 401 Unauthorized
+    1. Looks up partner by SHA-256 hash of X-Partner-Key and ensures active
+    2. Enforces X-Timestamp (within 300 seconds of server time)
+    3. Enforces X-Nonce (at least 16 chars, unseen in last 10 minutes)
+    4. Validates HMAC-SHA256 signature v2 (method, path, query, timestamp, nonce, sha256(body))
+    5. Rejects replays and invalid signatures with 401 Unauthorized
     """
     if not x_partner_key:
         raise HTTPException(
@@ -31,6 +40,12 @@ async def authenticate_partner(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Unknown or invalid partner key"
+        )
+    
+    if partner.active != 1:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Partner account is disabled"
         )
     
     if not x_signature:
@@ -54,7 +69,69 @@ async def authenticate_partner(
     request._receive = receive
     request._stream_consumed = False
 
-    expected_sig = compute_request_signature(x_partner_key, body)
+    # Check if v2 headers (X-Timestamp, X-Nonce) are provided
+    if x_timestamp and x_nonce:
+        try:
+            req_ts = int(x_timestamp.strip())
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid X-Timestamp header"
+            )
+            
+        current_ts = int(time.time())
+        if abs(current_ts - req_ts) > 300:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Request timestamp expired or skewed beyond 300 seconds"
+            )
+            
+        nonce_str = x_nonce.strip()
+        if len(nonce_str) < 16:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="X-Nonce must be at least 16 characters"
+            )
+            
+        # Check if nonce was seen in the last 10 minutes
+        ten_mins_ago = datetime.now(timezone.utc) - timedelta(minutes=10)
+        existing_nonce = db.query(RequestNonce).filter(
+            RequestNonce.partner_id == partner.partner_id,
+            RequestNonce.nonce == nonce_str,
+            RequestNonce.seen_at >= ten_mins_ago
+        ).first()
+        
+        if existing_nonce:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Replayed request: nonce already used"
+            )
+            
+        # Record new nonce
+        new_nonce = RequestNonce(
+            partner_id=partner.partner_id,
+            nonce=nonce_str,
+            seen_at=datetime.now(timezone.utc)
+        )
+        db.add(new_nonce)
+        # Purge older nonces
+        db.query(RequestNonce).filter(RequestNonce.seen_at < ten_mins_ago).delete()
+        db.commit()
+
+        path = request.url.path
+        query = request.url.query
+        expected_sig = compute_request_signature_v2(
+            api_key=x_partner_key,
+            method=request.method,
+            path=path,
+            query=query,
+            timestamp=x_timestamp.strip(),
+            nonce=nonce_str,
+            body=body
+        )
+    else:
+        # Fallback to legacy signature v1 (body only) for existing callers
+        expected_sig = compute_request_signature(x_partner_key, body)
     
     if not hmac.compare_digest(x_signature.strip().lower(), expected_sig.strip().lower()):
         raise HTTPException(
