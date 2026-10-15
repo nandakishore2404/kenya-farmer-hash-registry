@@ -103,6 +103,7 @@ def process_farmer_registration(
                 # Previously removed, now reactivated
                 link.status = "active"
                 link.linked_at = ts
+                link.received_at = now
                 audit = AuditLog(
                     action="register_reactivate_partner",
                     partner_id=partner_id,
