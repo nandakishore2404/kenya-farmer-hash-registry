@@ -5,7 +5,8 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from app.config import settings
-from app.database import Base, engine
+from app.database import Base, engine, SessionLocal
+from app.models import Partner
 from app.main import init_db
 
 def reset_local_db():
@@ -21,7 +22,17 @@ def reset_local_db():
     # Drop and recreate all tables via SQLAlchemy metadata
     Base.metadata.drop_all(bind=engine)
     init_db()
-    print("Database reset complete. Seeded Test Partners A, B, and C.")
+
+    db = SessionLocal()
+    try:
+        partners = db.query(Partner).all()
+        if partners:
+            partner_names = ", ".join(p.name for p in partners)
+            print(f"Database reset complete. Seeded {len(partners)} partners: {partner_names}.")
+        else:
+            print("Database reset complete. No partners seeded (ENV != development or SEED_TEST_PARTNERS is False).")
+    finally:
+        db.close()
 
 if __name__ == "__main__":
     reset_local_db()
