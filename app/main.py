@@ -10,10 +10,6 @@ TEST_PARTNERS = [
     {"partner_id": "test_partner_a", "name": "Test Partner A", "api_key": "test_partner_a_api_key_2026"},
     {"partner_id": "test_partner_b", "name": "Test Partner B", "api_key": "test_partner_b_api_key_2026"},
     {"partner_id": "test_partner_c", "name": "Test Partner C", "api_key": "test_partner_c_api_key_2026"},
-    # Keep legacy IDs mapped to neutral names so existing tests run smoothly
-    {"partner_id": "partner_alpha", "name": "Test Partner Alpha", "api_key": "alpha_api_key_pilot_2026"},
-    {"partner_id": "partner_beta", "name": "Test Partner Beta", "api_key": "beta_api_key_pilot_2026"},
-    {"partner_id": "partner_gamma", "name": "Test Partner Gamma", "api_key": "gamma_api_key_pilot_2026"},
 ]
 
 def init_db():

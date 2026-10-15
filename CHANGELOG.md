@@ -47,7 +47,7 @@ All notable changes to the **Kenya Farmer Hash Registry** project will be docume
   - Added `validate_production_security()` to `Settings`: refuses startup in non-development environments if keys are missing, shorter than 32 characters, or match known committed test keys.
   - Added `.env.example` with placeholders; verified `.env` is ignored in `.gitignore`.
 - **Neutral Test Partners:**
-  - Removed automatic seeding of real organization names ("DigiFarm", "One Acre Fund", "KALRO").
+  - Removed automatic seeding of real organisation names.
   - Replaced with neutral "Test Partner A", "Test Partner B", "Test Partner C" seeded only when `ENV=development` and `SEED_TEST_PARTNERS=true`.
 - **Dashboard Authentication & Accurate Privacy Display:**
   - Added HTTP Basic Authentication to `/dashboard` via `DASHBOARD_USER` and `DASHBOARD_PASSWORD` using constant-time comparison.

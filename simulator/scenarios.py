@@ -23,9 +23,6 @@ PARTNERS = {
     "test_partner_a": "test_partner_a_api_key_2026",
     "test_partner_b": "test_partner_b_api_key_2026",
     "test_partner_c": "test_partner_c_api_key_2026",
-    # Backward compatibility
-    "partner_alpha": "alpha_api_key_pilot_2026",
-    "partner_beta": "beta_api_key_pilot_2026",
 }
 
 def make_request(method: str, path: str, partner_id: str, body: bytes | str = b"", headers_override: dict = None):

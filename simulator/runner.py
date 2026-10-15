@@ -17,9 +17,9 @@ ENV = os.environ.get("ENV", "development")
 
 DEV_DEFAULT_PARTNER_KEY = "partner_shared_pilot_secret"
 DEV_DEFAULT_PARTNER_KEYS = {
-    "partner_alpha": "alpha_api_key_pilot_2026",
-    "partner_beta": "beta_api_key_pilot_2026",
-    "partner_gamma": "gamma_api_key_pilot_2026",
+    "test_partner_a": "test_partner_a_api_key_2026",
+    "test_partner_b": "test_partner_b_api_key_2026",
+    "test_partner_c": "test_partner_c_api_key_2026",
 }
 
 if ENV != "development":
@@ -27,9 +27,9 @@ if ENV != "development":
     if not PARTNER_KEY or PARTNER_KEY == DEV_DEFAULT_PARTNER_KEY:
         raise ValueError("In non-development environments, a production PARTNER_KEY must be provided via environment variables.")
     PARTNER_KEYS = {
-        "partner_alpha": os.environ.get("PARTNER_ALPHA_API_KEY", ""),
-        "partner_beta": os.environ.get("PARTNER_BETA_API_KEY", ""),
-        "partner_gamma": os.environ.get("PARTNER_GAMMA_API_KEY", ""),
+        "test_partner_a": os.environ.get("TEST_PARTNER_A_API_KEY", ""),
+        "test_partner_b": os.environ.get("TEST_PARTNER_B_API_KEY", ""),
+        "test_partner_c": os.environ.get("TEST_PARTNER_C_API_KEY", ""),
     }
     for pid, pkey in PARTNER_KEYS.items():
         if not pkey or pkey == DEV_DEFAULT_PARTNER_KEYS.get(pid):
@@ -37,9 +37,9 @@ if ENV != "development":
 else:
     PARTNER_KEY = os.environ.get("PARTNER_KEY", DEV_DEFAULT_PARTNER_KEY)
     PARTNER_KEYS = {
-        "partner_alpha": os.environ.get("PARTNER_ALPHA_API_KEY", DEV_DEFAULT_PARTNER_KEYS["partner_alpha"]),
-        "partner_beta": os.environ.get("PARTNER_BETA_API_KEY", DEV_DEFAULT_PARTNER_KEYS["partner_beta"]),
-        "partner_gamma": os.environ.get("PARTNER_GAMMA_API_KEY", DEV_DEFAULT_PARTNER_KEYS["partner_gamma"]),
+        "test_partner_a": os.environ.get("TEST_PARTNER_A_API_KEY", DEV_DEFAULT_PARTNER_KEYS["test_partner_a"]),
+        "test_partner_b": os.environ.get("TEST_PARTNER_B_API_KEY", DEV_DEFAULT_PARTNER_KEYS["test_partner_b"]),
+        "test_partner_c": os.environ.get("TEST_PARTNER_C_API_KEY", DEV_DEFAULT_PARTNER_KEYS["test_partner_c"]),
     }
 
 def sign_and_post(base_url: str, endpoint: str, partner_id: str, payload_dict: dict, session: requests.Session):
@@ -122,10 +122,10 @@ def run_simulation(base_url: str = "http://localhost:8000"):
         ])
     
     csv_bytes = csv_buffer.getvalue().encode("utf-8")
-    gamma_key = PARTNER_KEYS["partner_gamma"]
+    c_key = PARTNER_KEYS["test_partner_c"]
     
     # Sign raw CSV bytes using Signature v2
-    headers = sign_request(gamma_key, "POST", "/v1/farmers:upload", "", csv_bytes)
+    headers = sign_request(c_key, "POST", "/v1/farmers:upload", "", csv_bytes)
     headers["Content-Type"] = "text/csv"
     upload_res = session.post(f"{base_url}/v1/farmers:upload", data=csv_bytes, headers=headers)
     upload_res.raise_for_status()
@@ -229,9 +229,9 @@ def run_simulation(base_url: str = "http://localhost:8000"):
 
 | Partner ID | Total Active Links | First-to-Onboard Credit | Already Known in Registry |
 | :--- | :--- | :--- | :--- |
-| **partner_alpha** (Test Partner Alpha) | {partner_summaries['partner_alpha']['farmers_sent']:,} | {partner_summaries['partner_alpha']['first_to_onboard']:,} | {partner_summaries['partner_alpha']['already_known']:,} |
-| **partner_beta** (Test Partner Beta) | {partner_summaries['partner_beta']['farmers_sent']:,} | {partner_summaries['partner_beta']['first_to_onboard']:,} | {partner_summaries['partner_beta']['already_known']:,} |
-| **partner_gamma** (Test Partner Gamma - CSV) | {partner_summaries['partner_gamma']['farmers_sent']:,} | {partner_summaries['partner_gamma']['first_to_onboard']:,} | {partner_summaries['partner_gamma']['already_known']:,} |
+| **test_partner_a** (Test Partner A) | {partner_summaries['test_partner_a']['farmers_sent']:,} | {partner_summaries['test_partner_a']['first_to_onboard']:,} | {partner_summaries['test_partner_a']['already_known']:,} |
+| **test_partner_b** (Test Partner B) | {partner_summaries['test_partner_b']['farmers_sent']:,} | {partner_summaries['test_partner_b']['first_to_onboard']:,} | {partner_summaries['test_partner_b']['already_known']:,} |
+| **test_partner_c** (Test Partner C - CSV) | {partner_summaries['test_partner_c']['farmers_sent']:,} | {partner_summaries['test_partner_c']['first_to_onboard']:,} | {partner_summaries['test_partner_c']['already_known']:,} |
 
 ---
 

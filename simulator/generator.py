@@ -7,7 +7,7 @@ from typing import Dict, List, Any
 COUNTIES = ["047", "032", "019", "042"]
 GENDERS = ["F", "M"]
 AGE_BANDS = ["18-24", "25-34", "35-44", "45-54", "55-64", "65+"]
-PARTNERS = ["partner_alpha", "partner_beta", "partner_gamma"]
+PARTNERS = ["test_partner_a", "test_partner_b", "test_partner_c"]
 
 def generate_kenyan_number(prefix_choice: str = None) -> str:
     """Generates an 8-digit suffix following 7 or 1 prefix."""
@@ -105,7 +105,7 @@ def generate_synthetic_dataset(total_farmers: int = 3000, seed: int = 42) -> Dic
     
     for idx, ind in enumerate(individuals):
         if idx in three_partner_idx:
-            assigned_partners = ["partner_alpha", "partner_beta", "partner_gamma"]
+            assigned_partners = ["test_partner_a", "test_partner_b", "test_partner_c"]
         elif idx in two_partner_idx:
             assigned_partners = random.sample(PARTNERS, 2)
         else:
@@ -127,7 +127,7 @@ def generate_synthetic_dataset(total_farmers: int = 3000, seed: int = 42) -> Dic
                 "gender": ind["gender"],
                 "age_band": ind["age_band"],
                 "county_code": ind["county_code"],
-                "is_csv_upload": (partner_id == "partner_gamma")
+                "is_csv_upload": (partner_id == "test_partner_c")
             })
 
     # 5. Inject 1% consent withdrawals

@@ -7,8 +7,8 @@ from app.models import Farmer, PartnerLink, AuditLog
 from sdk.python.hasher import hash_phone, sign_request
 
 PARTNER_KEY = "partner_shared_pilot_secret"
-ALPHA_KEY = "alpha_api_key_pilot_2026"
-BETA_KEY = "beta_api_key_pilot_2026"
+ALPHA_KEY = "test_partner_a_api_key_2026"
+BETA_KEY = "test_partner_b_api_key_2026"
 
 def get_auth_headers(api_key: str, body: bytes, method: str = "POST", path: str = "/v1/farmers", content_type: str = "application/json") -> dict:
     headers = sign_request(api_key=api_key, method=method, path=path, query="", body=body)
@@ -60,7 +60,7 @@ def test_farmer_registration_branches_and_idempotency(client, db_session):
     # Verify in DB
     links = db_session.query(PartnerLink).all()
     assert len(links) == 1
-    assert links[0].partner_id == "partner_alpha"
+    assert links[0].partner_id == "test_partner_a"
     assert links[0].status == "active"
     
     # Branch 2: Idempotency (Partner Alpha sends the exact same farmer again with fresh request headers)
@@ -84,7 +84,7 @@ def test_farmer_registration_branches_and_idempotency(client, db_session):
     links = db_session.query(PartnerLink).filter(PartnerLink.farmer_id == farmers[0].id).all()
     assert len(links) == 2
     partner_ids = {l.partner_id for l in links}
-    assert partner_ids == {"partner_alpha", "partner_beta"}
+    assert partner_ids == {"test_partner_a", "test_partner_b"}
 
 
 def test_partner_summary_aggregates(client):
@@ -94,7 +94,7 @@ def test_partner_summary_aggregates(client):
     res = client.get("/v1/partners/me/summary", headers=headers_alpha)
     assert res.status_code == 200
     data = res.json()
-    assert data["partner_id"] == "partner_alpha"
+    assert data["partner_id"] == "test_partner_a"
     assert data["farmers_sent"] == 1
     assert data["first_to_onboard"] == 1
     assert data["already_known"] == 0
@@ -104,7 +104,7 @@ def test_partner_summary_aggregates(client):
     res = client.get("/v1/partners/me/summary", headers=headers_beta)
     assert res.status_code == 200
     data_beta = res.json()
-    assert data_beta["partner_id"] == "partner_beta"
+    assert data_beta["partner_id"] == "test_partner_b"
     assert data_beta["farmers_sent"] == 1
     assert data_beta["first_to_onboard"] == 0
     assert data_beta["already_known"] == 1

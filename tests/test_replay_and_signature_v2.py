@@ -4,7 +4,7 @@ import pytest
 from sdk.python.hasher import hash_phone, sign_request
 
 PARTNER_KEY = "partner_shared_pilot_secret"
-ALPHA_KEY = "alpha_api_key_pilot_2026"
+ALPHA_KEY = "test_partner_a_api_key_2026"
 
 def test_signature_v2_and_replay_rejection(client):
     h = hash_phone("0719888777", PARTNER_KEY)

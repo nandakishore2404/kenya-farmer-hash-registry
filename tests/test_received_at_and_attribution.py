@@ -5,8 +5,8 @@ from app.models import Farmer, PartnerLink
 from sdk.python.hasher import hash_phone, sign_request
 
 PARTNER_KEY = "partner_shared_pilot_secret"
-ALPHA_KEY = "alpha_api_key_pilot_2026"
-BETA_KEY = "beta_api_key_pilot_2026"
+ALPHA_KEY = "test_partner_a_api_key_2026"
+BETA_KEY = "test_partner_b_api_key_2026"
 
 def get_auth_headers(api_key: str, body: bytes) -> dict:
     headers = sign_request(api_key, "POST", "/v1/farmers", "", body)
@@ -87,5 +87,5 @@ def test_first_to_onboard_credit_retained_by_received_at(client, db_session):
     data_a = res_sum_a.json()
     data_b = res_sum_b.json()
     # Check that A has first_to_onboard credit for this farmer
-    link_a = db_session.query(PartnerLink).filter(PartnerLink.partner_id == "partner_alpha", PartnerLink.farmer.has(hash_key=Farmer.hash_key)).first()
+    link_a = db_session.query(PartnerLink).filter(PartnerLink.partner_id == "test_partner_a", PartnerLink.farmer.has(hash_key=Farmer.hash_key)).first()
     assert link_a.received_at is not None

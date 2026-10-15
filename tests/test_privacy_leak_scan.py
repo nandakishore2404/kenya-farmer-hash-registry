@@ -9,7 +9,7 @@ from sdk.python.hasher import hash_phone, sign_request
 
 PHONE_REGEX = re.compile(r"(\+?254[71]\d{8}|0[71]\d{8})")
 PARTNER_KEY = "partner_shared_pilot_secret"
-ALPHA_KEY = "alpha_api_key_pilot_2026"
+ALPHA_KEY = "test_partner_a_api_key_2026"
 
 def get_auth_headers(api_key: str, body: bytes) -> dict:
     headers = sign_request(api_key, "POST", "/v1/farmers", "", body)

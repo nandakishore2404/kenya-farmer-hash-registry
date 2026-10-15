@@ -7,8 +7,8 @@ from app.hashing import rekey_hash
 from sdk.python.hasher import hash_phone, sign_request
 
 PARTNER_KEY = "partner_shared_pilot_secret"
-ALPHA_KEY = "alpha_api_key_pilot_2026"
-BETA_KEY = "beta_api_key_pilot_2026"
+ALPHA_KEY = "test_partner_a_api_key_2026"
+BETA_KEY = "test_partner_b_api_key_2026"
 
 def test_reactivation_credit_stays_with_continuous_partner(client, db_session):
     """
@@ -81,6 +81,6 @@ def test_reactivation_credit_stays_with_continuous_partner(client, db_session):
     # Directly verify in DB that Partner B's link has an earlier received_at than Partner A's reactivated link
     farmer = db_session.query(Farmer).filter(Farmer.hash_key == rekeyed).first()
     assert farmer is not None
-    link_a = db_session.query(PartnerLink).filter(PartnerLink.farmer_id == farmer.id, PartnerLink.partner_id == "partner_alpha").first()
-    link_b = db_session.query(PartnerLink).filter(PartnerLink.farmer_id == farmer.id, PartnerLink.partner_id == "partner_beta").first()
+    link_a = db_session.query(PartnerLink).filter(PartnerLink.farmer_id == farmer.id, PartnerLink.partner_id == "test_partner_a").first()
+    link_b = db_session.query(PartnerLink).filter(PartnerLink.farmer_id == farmer.id, PartnerLink.partner_id == "test_partner_b").first()
     assert link_b.received_at < link_a.received_at, "Partner B's received_at must be earlier than Partner A's reactivated received_at"

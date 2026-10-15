@@ -5,7 +5,7 @@ from app.models import Farmer, PartnerLink
 from sdk.python.hasher import hash_phone, sign_request
 
 PARTNER_KEY = "partner_shared_pilot_secret"
-ALPHA_KEY = "alpha_api_key_pilot_2026"
+ALPHA_KEY = "test_partner_a_api_key_2026"
 
 def test_csv_upload_duplicate_code_in_same_file(client, db_session):
     """
@@ -43,7 +43,7 @@ def test_csv_upload_duplicate_code_in_same_file(client, db_session):
     for rk in rekeyed_hashes:
         assert db_session.query(Farmer).filter(Farmer.hash_key == rk).count() == 1
         f = db_session.query(Farmer).filter(Farmer.hash_key == rk).first()
-        assert db_session.query(PartnerLink).filter(PartnerLink.farmer_id == f.id, PartnerLink.partner_id == "partner_alpha").count() == 1
+        assert db_session.query(PartnerLink).filter(PartnerLink.farmer_id == f.id, PartnerLink.partner_id == "test_partner_a").count() == 1
 
 
 def test_csv_upload_invalid_row_isolation(client, db_session):
