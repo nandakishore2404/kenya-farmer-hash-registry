@@ -119,11 +119,13 @@ def withdraw_consent(
 def check_consent_policy_enforcement_point(
     entity_id: str,
     purpose: str = "ADVISORY",
+    partner: Partner = Depends(authenticate_partner),
     db: Session = Depends(get_db)
 ):
     """
     Common Consent Policy Enforcement Point (PEP):
     Mandatory pre-flight check before any advisory, SMS, or subsidy service executes.
+    Requires partner authentication (or internal service credentials).
     Returns: ALLOW (true) if ACTIVE, BLOCK (false) if WITHDRAWN or missing.
     """
     consent = db.query(FarmerConsent).filter(

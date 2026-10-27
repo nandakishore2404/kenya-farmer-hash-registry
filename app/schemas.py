@@ -37,7 +37,7 @@ class FarmerRegisterRequest(BaseModel):
 
 class VOPRFFarmerRegisterRequest(BaseModel):
     pilot_id: str = Field("kenya-pilot", description="Pilot identifier")
-    key_id: str = Field("ke-pilot-v1", description="Evaluator Key ID")
+    key_id: str = Field("ke-pilot-v2", description="Evaluator Key ID")
     token_b64: str = Field(..., description="Base64-encoded 64-byte finalized VOPRF token T")
     gender: Optional[GenderType] = "U"
     age_band: Optional[AgeBandType] = "U"

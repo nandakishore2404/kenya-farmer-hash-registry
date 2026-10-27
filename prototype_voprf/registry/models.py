@@ -58,8 +58,9 @@ class TokenAlias(Base):
     entity_id = Column(String(36), ForeignKey("farmer_entity.entity_id", ondelete="CASCADE"), nullable=False, index=True)
     pilot_id = Column(String(50), nullable=False, default="kenya-pilot")
     scheme = Column(String(50), nullable=False) # 'voprf_ristretto255', 'legacy_hmac', 'kenya_kfr'
-    key_id = Column(String(50), nullable=False) # e.g. 'v1'
+    key_id = Column(String(50), nullable=False) # e.g. 'ke-pilot-v2'
     digest_d = Column(String(64), nullable=False, unique=True, index=True)
+    status = Column(String(30), default="active", nullable=False) # 'active', 'compromised_v1_legacy'
     created_at = Column(DateTime, default=utcnow, nullable=False)
 
     __table_args__ = (

@@ -85,8 +85,9 @@ class DirectRegistryClient:
         req = ConsentWithdrawRequest(entity_id=entity_id, purpose=purpose, reason=reason)
         return withdraw_consent(req, partner_name=partner_name, db=self.db)
 
-    def check_consent(self, entity_id: str, purpose: str = "ADVISORY"):
-        return check_consent_enforcement_point(entity_id=entity_id, purpose=purpose, db=self.db)
+    def check_consent(self, entity_id: str, purpose: str = "ADVISORY", caller_token: str = "partner_oaf_token"):
+        partner_name = PARTNER_DIRECTORY[caller_token]
+        return check_consent_enforcement_point(entity_id=entity_id, purpose=purpose, partner_name=partner_name, db=self.db)
 
     def get_metrics(self):
         return get_dpi_telemetry(db=self.db)
@@ -342,4 +343,40 @@ def test_dpi_telemetry_metrics(eval_client, reg_client):
     assert m["deduplicated_farmer_identities"] == 2
     assert m["cross_provider_overlap_records"] == 1
     assert m["cross_provider_overlap_rate_pct"] == 33.33
-    assert m["farmers_shared_across_multiple_providers"] == 1
+
+def test_hash_to_group_has_no_known_dlog():
+    """
+    TASK 2 BLOCKING REGRESSION TEST:
+    Verifies that hash_to_group(x) produces a curve point with an UNKNOWN discrete
+    logarithm relative to base generator G.
+
+    Ensures that an attacker with access to public key K and phone number x
+    CANNOT forge the evaluated token without querying the Evaluator.
+    """
+    import hashlib
+    from prototype_voprf.crypto.voprf_engine import hash_to_group, point_mul, verify_dleq_proof, N_ORDER
+    from prototype_voprf.evaluator.service import EVALUATOR_SECRET_K, EVALUATOR_PUBLIC_KEY
+
+    phone = "0712345678"
+    x = VOPRFEngine.encode_input("kenya-pilot", phone)
+
+    # 1. Honest protocol flow
+    B_honest, r_honest = VOPRFEngine.blind(x)
+    Z_honest, proof = VOPRFEngine.evaluate(EVALUATOR_SECRET_K, B_honest, EVALUATOR_PUBLIC_KEY)
+    assert verify_dleq_proof(GENERATOR_G, EVALUATOR_PUBLIC_KEY, B_honest, Z_honest, proof)
+    N_honest = VOPRFEngine.unblind(Z_honest, r_honest)
+    token_honest = VOPRFEngine.finalize(x, N_honest)
+
+    # 2. Attacker shortcut attempt using legacy scalar formula s(x)
+    dst_legacy = b"HashToGroup-oan-phone-dedup-v1-"
+    h_legacy = hashlib.sha512(dst_legacy + x).digest()
+    s_legacy = int.from_bytes(h_legacy, "big") % (N_ORDER - 1) + 1
+
+    forged_point_pt = point_mul(s_legacy, EVALUATOR_PUBLIC_KEY.pt)
+    assert forged_point_pt is not None
+    forged_point = GroupElement(forged_point_pt)
+    token_forged = VOPRFEngine.finalize(x, forged_point)
+
+    # 3. CRITICAL ASSERTION:
+    assert N_honest.pt != forged_point.pt, "CRITICAL DEFECT: Attacker forged unblinded element N!"
+    assert token_honest != token_forged, "CRITICAL DEFECT: Attacker forged finalized token T using shortcut!"

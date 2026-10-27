@@ -23,11 +23,11 @@ from prototype_voprf.crypto.voprf_engine import (
 app = FastAPI(title="OAN Kenya VOPRF Independent Evaluator", version="1.0.0")
 
 # Evaluator Private Key k (in production, held in AWS CloudHSM / Vault)
-# Fixed deterministic scalar for Kenya Pilot Key v1
-EVALUATOR_SECRET_K = 0x7A9B3C2D1E4F5A6B7C8D9E0F1A2B3C4D5E6F7A8B9C0D1E2F3A4B5C6D7E8F9A0B % N_ORDER
+# Key Epoch v2: Fresh Evaluator Key after deprecation of compromised v1 key
+EVALUATOR_SECRET_K = 0x5D8A9F1B2C3E4D5A6B7C8D9E0F1A2B3C4D5E6F7A8B9C0D1E2F3A4B5C6D7E8F91 % N_ORDER
 # Evaluator Public Key K = k * G
 EVALUATOR_PUBLIC_KEY = GroupElement(point_mul(EVALUATOR_SECRET_K, GENERATOR_G.pt))
-KEY_ID = "ke-pilot-v1"
+KEY_ID = "ke-pilot-v2"
 
 # Allowed partner credentials for mTLS/API Gateway simulation
 AUTHORIZED_PARTNERS = {
@@ -105,7 +105,10 @@ def evaluate_blinded_batch(
             raw_b = base64.b64decode(b_b64)
             B = GroupElement.from_bytes(raw_b)
         except Exception:
-            raise HTTPException(status_code=400, detail="Malformed group element in batch")
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid group element encoding, non-affine point, or point not on secp256k1 curve"
+            )
 
         Z, proof = VOPRFEngine.evaluate(EVALUATOR_SECRET_K, B, EVALUATOR_PUBLIC_KEY)
         evaluated_elements_b64.append(base64.b64encode(Z.to_bytes()).decode("utf-8"))

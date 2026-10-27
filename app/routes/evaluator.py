@@ -2,7 +2,8 @@
 VOPRF Independent Evaluator Router (RFC 9497)
 - Key custody isolated with dedicated key scalar k
 - Provides /v1/evaluations and /v1/evaluator/public-key
-- Rate limiting quotas and batch bound verification
+- Rate limiting quotas, batch bound verification, and curve point validation
+- Key Epoch v2: Fresh key after deprecating compromised v1 mapping
 """
 
 import base64
@@ -22,10 +23,11 @@ from app.models import Partner
 
 router = APIRouter(prefix="/v1", tags=["evaluator"])
 
-# Evaluator Private Key k (in production, held in AWS CloudHSM / Vault)
-EVALUATOR_SECRET_K = 0x7A9B3C2D1E4F5A6B7C8D9E0F1A2B3C4D5E6F7A8B9C0D1E2F3A4B5C6D7E8F9A0B % N_ORDER
+# Evaluator Key Epoch v2: Fresh Evaluator Key after deprecation of compromised v1 key
+# (in production, held in AWS CloudHSM / HashiCorp Vault transit engine)
+EVALUATOR_KEY_ID = "ke-pilot-v2"
+EVALUATOR_SECRET_K = 0x5D8A9F1B2C3E4D5A6B7C8D9E0F1A2B3C4D5E6F7A8B9C0D1E2F3A4B5C6D7E8F91 % N_ORDER
 EVALUATOR_PUBLIC_KEY = GroupElement(point_mul(EVALUATOR_SECRET_K, GENERATOR_G.pt))
-EVALUATOR_KEY_ID = "ke-pilot-v1"
 
 # In-memory quota tracker
 PARTNER_QUOTAS = {}
@@ -44,13 +46,14 @@ class EvaluatedElementResponse(BaseModel):
 @router.get("/evaluator/public-key")
 def get_evaluator_public_key():
     """
-    Returns pinned Evaluator Public Key K = k * G.
+    Returns pinned Evaluator Public Key K = k * G for active key epoch.
     """
     return {
         "key_id": EVALUATOR_KEY_ID,
         "public_key": base64.b64encode(EVALUATOR_PUBLIC_KEY.to_bytes()).decode("utf-8"),
         "curve": "secp256k1-SHA512",
-        "status": "active"
+        "status": "active",
+        "epoch": "v2"
     }
 
 @router.post("/evaluations", response_model=EvaluatedElementResponse)
@@ -63,6 +66,7 @@ def evaluate_blinded_batch(
     Z = k * B
     Computes DLEQ proof for each element.
     Evaluator never learns the cleartext phone numbers.
+    Strictly validates that every decoded point is non-infinity and lies on secp256k1.
     """
     if req.key_id != EVALUATOR_KEY_ID:
         raise HTTPException(
@@ -91,7 +95,10 @@ def evaluate_blinded_batch(
             raw_b = base64.b64decode(b_b64)
             B = GroupElement.from_bytes(raw_b)
         except Exception:
-            raise HTTPException(status_code=400, detail="Malformed group element in batch")
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid group element encoding, non-affine point, or point not on secp256k1 curve"
+            )
 
         Z, proof = VOPRFEngine.evaluate(EVALUATOR_SECRET_K, B, EVALUATOR_PUBLIC_KEY)
         evaluated_elements_b64.append(base64.b64encode(Z.to_bytes()).decode("utf-8"))

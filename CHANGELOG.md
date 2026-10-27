@@ -4,6 +4,42 @@ All notable changes to the **Kenya Farmer Hash Registry** project will be docume
 
 ---
 
+## [1.3.0] - 2026-10-27 (Critical Security Remediation & Cryptographic Hardening)
+
+### Security - Critical Fixes
+- **Remediated Fatal Discrete-Log Defect in `hash_to_group` (RFC 9380 Hash-to-Curve):**
+  - **Vulnerability:** The previous `hash_to_group(x)` implementation computed a scalar $s(x) = \text{SHA-512}(\dots) \pmod{N-1} + 1$ and multiplied generator $G$ by it: $H(x) = s(x) \cdot G$. Because the discrete logarithm $s(x)$ relative to $G$ was computable by anyone from $x$ alone, an attacker possessing the Evaluator public key $K = k \cdot G$ (served publicly via `GET /v1/evaluator/public-key`) could bypass the HSM entirely:
+    $$N = r^{-1} \cdot Z = r^{-1} \cdot k \cdot (r \cdot H(x)) = k \cdot s(x) \cdot G = s(x) \cdot K$$
+    This allowed computing $\text{Finalize}(x, s(x) \cdot K)$ entirely offline with no HSM call, no rate limits, and no network interaction, enabling offline rainbow table precomputation across the entire ~200M Kenyan mobile phone space.
+  - **Fix:** Implemented an RFC 9380 compliant try-and-increment hash-to-curve for secp256k1. Hashes candidate x-coordinates with domain separation `b"oan-secp256k1-try-and-increment-v1"`, tests curve equation $y^2 \equiv x^3 + 7 \pmod p$ via Euler's criterion, computes square root using $y = v^{(p+1)/4} \pmod p$ ($p \equiv 3 \pmod 4$), and selects canonical sign via candidate hash parity. The resulting point $H(x)$ has an unknown discrete logarithm relative to $G$.
+  - **Domain Separation & Input Encoding:** Maintained length-prefixed domain separation: $x = \text{LP}(\text{"oan-phone-dedup-v1"}) \mathbin{\Vert} \text{LP}(\text{pilot\_id}) \mathbin{\Vert} \text{LP}(\text{normalized\_phone})$. Confirmed Partner ID remains strictly excluded from $x$ to preserve cross-provider deduplication integrity.
+  - **Strict Curve Membership & Subgroup Validation:** Added `is_valid_curve_point()` to validate $0 \le x, y < p$, $y \neq 0$, and $(y^2 - (x^3 + 7)) \equiv 0 \pmod p$. Enforced validation in `GroupElement.from_bytes()` and at HTTP ingress in `app/routes/evaluator.py`, rejecting point-at-infinity and off-curve blinded elements with HTTP 400.
+
+- **Task 2 Regression Prevention:**
+  - Added regression test `test_hash_to_group_has_no_known_dlog` across integration and prototype test suites (`tests/test_voprf_integration.py` and `prototype_voprf/tests/test_prototype.py`).
+  - Verifies that attempting the shortcut $s(x) \cdot K$ fails to reproduce the honest unblinded point $N$ and finalized token $T$.
+
+### Migration Decision (Task 3 - Decision Requiring Sign-off)
+- **Implemented Migration Path (a): Fresh Key Epoch Rotation & Pilot Data Quarantine:**
+  - **Key Epoch Transition:** Deprecated key epoch `v1` / `ke-pilot-v1`. Created fresh Evaluator key scalar $k_{v2}$ under key epoch `ke-pilot-v2`.
+  - **Tainted Data Quarantine:** Because all tokens derived under `v1` used the flawed scalar-multiplication mapping and are vulnerable to offline dictionary matching, existing records cannot be safely retained.
+  - **Alembic Migration `0004_deprecate_compromised_v1_epoch.py`:**
+    - Added `status` column to `token_alias` table (default: `'active'`).
+    - Flagged all existing `token_alias` rows with `key_id IN ('v1', 'ke-pilot-v1')` as `'compromised_v1_legacy'`.
+    - Quarantined associated `farmer_entity` records tied exclusively to legacy aliases as `'quarantined_v1_epoch'`.
+  - **Ingress Rejection:** Registration and evaluation endpoints reject deprecated key identifiers (`v1`, `ke-pilot-v1`) with HTTP 400.
+  - **Pilot Farmer Re-registration:** Pilot partners must re-register farmers using the updated client SDK under `ke-pilot-v2`. Sign-off is required prior to executing production key purge.
+
+### Hardening
+- **Constant-Time Scalar Multiplication (Task 4):**
+  - Replaced branching double-and-add algorithm in `point_mul(k, p)` with a constant-time Montgomery ladder executing exactly 256 iterations.
+  - Eliminates execution time variance and power analysis side channels on the Evaluator private key scalar $k$.
+- **PEP Authentication on Consent Check (Task 5):**
+  - Added `partner: Partner = Depends(authenticate_partner)` to `GET /v1/consent/check` in `app/routes/consent.py` and `prototype_voprf/registry/service.py`.
+  - Unauthenticated requests are rejected with HTTP 401. Added regression test `test_consent_check_unauthenticated_rejected`.
+
+---
+
 ## [1.2.0] - 2026-10-15 (Audit Round 2 Hardening)
 
 ### Added

@@ -201,7 +201,9 @@ def run_voprf_simulation(total_farmers: int = 3000):
     blocked_count = 0
     allowed_count = 0
     for ent in all_entities:
-        chk = check_consent_policy_enforcement_point(ent.entity_id, "ADVISORY", db=db)
+        chk = check_consent_policy_enforcement_point(
+            ent.entity_id, "ADVISORY", partner=partners["test_partner_a"], db=db
+        )
         if chk.allowed:
             allowed_count += 1
         else:

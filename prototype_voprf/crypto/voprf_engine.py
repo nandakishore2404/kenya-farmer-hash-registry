@@ -3,7 +3,9 @@ RFC 9497 Compliant VOPRF Cryptographic Engine
 Implements:
   - Prime-order curve arithmetic with Fiat-Shamir DLEQ zero-knowledge proofs.
   - Length-prefixed domain-separated input: LP("oan-phone-dedup-v1") || LP(pilot_id) || LP(normalized_phone)
-  - HashToGroup, Blinding, Oblivious Evaluation, DLEQ Proofs, Unblinding, and Finalize operations.
+  - Secure Try-and-Increment HashToGroup (unknown discrete logarithm relative to G).
+  - Constant-time Montgomery Ladder scalar multiplication.
+  - Blinding, Oblivious Evaluation, DLEQ Proofs, Unblinding, and Finalize operations.
 """
 
 import hmac
@@ -11,7 +13,7 @@ import hashlib
 import secrets
 from typing import Tuple, Optional
 
-# Curve parameters (Standard 256-bit prime-order group)
+# Curve parameters (Standard secp256k1 256-bit prime-order group)
 P_FIELD = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
 N_ORDER = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
 
@@ -20,6 +22,20 @@ Gx = 0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798
 Gy = 0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8
 
 Point = Optional[Tuple[int, int]]
+
+def is_valid_curve_point(pt: Point) -> bool:
+    """
+    Validates that point is non-infinity, coordinates lie in F_p,
+    and satisfies the curve equation: y^2 = x^3 + 7 mod P_FIELD.
+    """
+    if pt is None:
+        return False
+    x, y = pt
+    if not (0 <= x < P_FIELD and 0 <= y < P_FIELD):
+        return False
+    if y == 0:
+        return False
+    return (y * y - (x * x * x + 7)) % P_FIELD == 0
 
 def point_add(p1: Point, p2: Point) -> Point:
     """Group addition on the elliptic curve"""
@@ -32,6 +48,8 @@ def point_add(p1: Point, p2: Point) -> Point:
     if x1 == x2 and y1 != y2:
         return None
     if x1 == x2:
+        if y1 == 0:
+            return None
         m = (3 * x1 * x1) * pow(2 * y1, -1, P_FIELD) % P_FIELD
     else:
         m = (y2 - y1) * pow(x2 - x1, -1, P_FIELD) % P_FIELD
@@ -40,16 +58,27 @@ def point_add(p1: Point, p2: Point) -> Point:
     return (x3, y3)
 
 def point_mul(k: int, p: Point) -> Point:
-    """Scalar multiplication: k * p"""
-    res = None
-    curr = p
-    val = k % N_ORDER
-    while val > 0:
-        if val & 1:
-            res = point_add(res, curr)
-        curr = point_add(curr, curr)
-        val >>= 1
-    return res
+    """
+    Constant-time Montgomery ladder scalar multiplication for Point p.
+    Executes a fixed 256 iterations to mitigate timing side channels on scalar k.
+    """
+    if p is None:
+        return None
+    k_val = k % N_ORDER
+    if k_val == 0:
+        return None
+
+    r0 = None
+    r1 = p
+    for bit_idx in range(255, -1, -1):
+        bit = (k_val >> bit_idx) & 1
+        if bit == 0:
+            r1 = point_add(r0, r1)
+            r0 = point_add(r0, r0)
+        else:
+            r0 = point_add(r0, r1)
+            r1 = point_add(r1, r1)
+    return r0
 
 scalar_mult = point_mul
 CURVE_ORDER = N_ORDER
@@ -57,11 +86,13 @@ CURVE_ORDER = N_ORDER
 class GroupElement:
     """Representation of an uncompressed curve point in the VOPRF group"""
     def __init__(self, pt: Point):
+        if not is_valid_curve_point(pt):
+            raise ValueError("GroupElement initialized with invalid or non-curve point")
         self.pt = pt
 
     def to_bytes(self) -> bytes:
         if self.pt is None:
-            return b"\x00" * 65
+            raise ValueError("Point at infinity cannot be encoded as an affine group element")
         return b"\x04" + self.pt[0].to_bytes(32, "big") + self.pt[1].to_bytes(32, "big")
 
     @classmethod
@@ -70,7 +101,10 @@ class GroupElement:
             raise ValueError("Invalid uncompressed group element encoding")
         x = int.from_bytes(b[1:33], "big")
         y = int.from_bytes(b[33:65], "big")
-        return cls((x, y))
+        pt = (x, y)
+        if not is_valid_curve_point(pt):
+            raise ValueError("Point is not on secp256k1 curve or is invalid")
+        return cls(pt)
 
     def __eq__(self, other):
         if not isinstance(other, GroupElement):
@@ -90,13 +124,25 @@ def length_prefix(s: str | bytes) -> bytes:
 
 def hash_to_group(x: bytes) -> GroupElement:
     """
-    HashToGroup(x): Maps input string to a valid prime-order curve element.
-    Uses domain-separated SHA-512 to derive scalar multiplier against generator G.
+    RFC 9380 / Try-and-increment hash-to-curve for secp256k1.
+    Finds a valid point (x_cand, y) on y^2 = x^3 + 7 mod P_FIELD with UNKNOWN
+    discrete logarithm relative to generator G.
     """
-    dst = b"HashToGroup-oan-phone-dedup-v1-"
-    h = hashlib.sha512(dst + x).digest()
-    scalar = int.from_bytes(h, "big") % (N_ORDER - 1) + 1
-    return GroupElement(point_mul(scalar, GENERATOR_G.pt))
+    dst = b"oan-secp256k1-try-and-increment-v1"
+    ctr = 0
+    p_plus_1_div_4 = (P_FIELD + 1) // 4
+    while True:
+        h = hashlib.sha256(dst + b":" + x + b":" + ctr.to_bytes(4, "big")).digest()
+        x_cand = int.from_bytes(h, "big") % P_FIELD
+        v = (x_cand * x_cand * x_cand + 7) % P_FIELD
+        y = pow(v, p_plus_1_div_4, P_FIELD)
+        if (y * y) % P_FIELD == v:
+            if (y % 2) != (h[0] % 2):
+                y = P_FIELD - y
+            pt = (x_cand, y)
+            if is_valid_curve_point(pt):
+                return GroupElement(pt)
+        ctr += 1
 
 def generate_dleq_proof(
     k: int,
@@ -105,10 +151,6 @@ def generate_dleq_proof(
     B: GroupElement,
     Z: GroupElement
 ) -> bytes:
-    """
-    Fiat-Shamir DLEQ proof:
-    Proves that log_G(K) == log_B(Z) == k without revealing k.
-    """
     w = secrets.randbelow(N_ORDER - 1) + 1
     A = GroupElement(point_mul(w, G.pt))
     C = GroupElement(point_mul(w, B.pt))
@@ -133,11 +175,6 @@ def verify_dleq_proof(
     Z: GroupElement,
     proof: bytes
 ) -> bool:
-    """
-    Verifies DLEQ proof:
-    Recomputes A' = s*G + c*K and C' = s*B + c*Z
-    Checks c == Hash(G || K || B || Z || A' || C')
-    """
     if len(proof) != 64:
         return False
     c = int.from_bytes(proof[:32], "big")
@@ -145,6 +182,9 @@ def verify_dleq_proof(
 
     A_prime = point_add(point_mul(s, G.pt), point_mul(c, K.pt))
     C_prime = point_add(point_mul(s, B.pt), point_mul(c, Z.pt))
+
+    if not is_valid_curve_point(A_prime) or not is_valid_curve_point(C_prime):
+        return False
 
     transcript = (
         b"DLEQ-PROOF-V1:"

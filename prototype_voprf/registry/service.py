@@ -78,7 +78,7 @@ def authenticate_partner(authorization: Optional[str] = Header(None)) -> str:
 # Schemas
 class RegistrationRequest(BaseModel):
     pilot_id: str = "kenya-pilot"
-    key_id: str = "ke-pilot-v1"
+    key_id: str = "ke-pilot-v2"
     token_b64: str = Field(..., description="Base64-encoded 64-byte finalized VOPRF token T")
     idempotency_key: str = Field(..., description="Unique UUID per client submission")
     role: Optional[Literal["onboarder", "primary", "contributor"]] = "contributor"
@@ -308,11 +308,13 @@ def withdraw_consent(
 def check_consent_enforcement_point(
     entity_id: str,
     purpose: str = "ADVISORY",
+    partner_name: str = Depends(authenticate_partner),
     db: Session = Depends(get_db)
 ):
     """
     Policy Enforcement Point (PEP) for Downstream OAN Services:
     Must be called before advisory messages, pest alerts, or subsidies are dispatched.
+    Requires caller authentication.
     Returns: ALLOW (true) if ACTIVE, BLOCK (false) if WITHDRAWN or missing.
     """
     consent = db.query(FarmerConsent).filter(

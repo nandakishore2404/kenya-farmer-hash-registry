@@ -179,7 +179,7 @@ def dev_voprf_register(payload: VOPRFRegisterPayload, db: Session = Depends(get_
     # LEVEL 3: Client Unblind & Finalize Token
     N = VOPRFEngine.unblind(Z, r)
     token_bytes = VOPRFEngine.finalize(x, N)
-    digest_d = compute_voprf_storage_digest("kenya-pilot", "v1", token_bytes)
+    digest_d = compute_voprf_storage_digest("kenya-pilot", EVALUATOR_KEY_ID, token_bytes)
 
     level_3 = {
         "level": 3,
@@ -193,7 +193,7 @@ def dev_voprf_register(payload: VOPRFRegisterPayload, db: Session = Depends(get_
     # LEVEL 4: Registry Entity Resolution & Attribution
     alias = db.query(TokenAlias).filter(
         TokenAlias.pilot_id == "kenya-pilot",
-        TokenAlias.key_id == "v1",
+        TokenAlias.key_id == EVALUATOR_KEY_ID,
         TokenAlias.digest_d == digest_d
     ).first()
 
@@ -209,7 +209,7 @@ def dev_voprf_register(payload: VOPRFRegisterPayload, db: Session = Depends(get_
             entity_id=entity_id,
             pilot_id="kenya-pilot",
             scheme="voprf_ristretto255",
-            key_id="v1",
+            key_id=EVALUATOR_KEY_ID,
             digest_d=digest_d,
             created_at=now
         )
@@ -577,11 +577,12 @@ def run_scenario(scenario_name: str, db: Session = Depends(get_db)):
         Z_new, proof_new = VOPRFEngine.evaluate(EVALUATOR_SECRET_K, B_new, EVALUATOR_PUBLIC_KEY)
         N_new = VOPRFEngine.unblind(Z_new, r_new)
         token_new = VOPRFEngine.finalize(x_new, N_new)
-        digest_new = compute_voprf_storage_digest("kenya-pilot", "v1", token_new)
+        digest_new = compute_voprf_storage_digest("kenya-pilot", EVALUATOR_KEY_ID, token_new)
 
         # Alias rotation: Add second token alias to SAME entity UUID!
         existing_alias = db.query(TokenAlias).filter(
             TokenAlias.pilot_id == "kenya-pilot",
+            TokenAlias.key_id == EVALUATOR_KEY_ID,
             TokenAlias.digest_d == digest_new
         ).first()
         if not existing_alias:
@@ -589,7 +590,7 @@ def run_scenario(scenario_name: str, db: Session = Depends(get_db)):
                 entity_id=entity_id,
                 pilot_id="kenya-pilot",
                 scheme="voprf_ristretto255",
-                key_id="v1",
+                key_id=EVALUATOR_KEY_ID,
                 digest_d=digest_new,
                 created_at=now
             ))

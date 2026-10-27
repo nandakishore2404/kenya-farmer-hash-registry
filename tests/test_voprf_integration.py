@@ -183,7 +183,7 @@ def test_consent_lifecycle_and_pep():
     db.commit()
 
     # Pre-consent check
-    chk1 = check_consent_policy_enforcement_point(entity.entity_id, "ADVISORY", db=db)
+    chk1 = check_consent_policy_enforcement_point(entity.entity_id, "ADVISORY", partner=partner_a, db=db)
     assert chk1.allowed is False
 
     # Capture consent
@@ -192,7 +192,7 @@ def test_consent_lifecycle_and_pep():
     assert cap_resp["state"] == "ACTIVE"
 
     # Active consent check
-    chk2 = check_consent_policy_enforcement_point(entity.entity_id, "ADVISORY", db=db)
+    chk2 = check_consent_policy_enforcement_point(entity.entity_id, "ADVISORY", partner=partner_a, db=db)
     assert chk2.allowed is True
 
     # Withdraw consent
@@ -201,7 +201,7 @@ def test_consent_lifecycle_and_pep():
     assert with_resp["state"] == "WITHDRAWN"
 
     # Post-withdrawal check -> BLOCKED!
-    chk3 = check_consent_policy_enforcement_point(entity.entity_id, "ADVISORY", db=db)
+    chk3 = check_consent_policy_enforcement_point(entity.entity_id, "ADVISORY", partner=partner_a, db=db)
     assert chk3.allowed is False
     assert chk3.status == "WITHDRAWN"
 
@@ -256,3 +256,72 @@ def test_dpi_telemetry_reporting():
     assert metrics["cross_provider_overlap_rate_pct"] == 33.33
 
     db.close()
+
+def test_hash_to_group_has_no_known_dlog():
+    """
+    TASK 2 BLOCKING REGRESSION TEST:
+    Verifies that hash_to_group(x) produces a curve point with an UNKNOWN discrete
+    logarithm relative to base generator G.
+
+    WHY THIS TEST EXISTS:
+    In a prior defective implementation, hash_to_group computed:
+        s(x) = SHA512(...) mod (N-1) + 1
+        H(x) = s(x) * G
+    Because s(x) was publicly computable from x alone, anyone holding public key K = k*G
+    could forge the unblinded evaluator product as:
+        forged_N = s(x) * K = s(x) * k * G = k * (s(x) * G) = k * H(x) = honest_N
+    This allowed an offline rainbow-table attack across all ~200M Kenyan phone numbers
+    without ever calling the HSM Evaluator or needing any private key.
+
+    THIS TEST ENSURES:
+    1. The honest flow produces token T via Evaluator private key k.
+    2. Attempting the offline shortcut s(x) * K FAILS to produce honest_N and FAILS
+       to reproduce the token T.
+    3. Any attacker with only x and K cannot compute T offline without querying the Evaluator.
+    DO NOT SIMPLIFY OR CHANGE hash_to_group BACK TO A SCALAR MULTIPLE OF G.
+    """
+    import hashlib
+    from app.crypto.voprf import hash_to_group, point_mul, verify_dleq_proof, N_ORDER
+    from app.routes.evaluator import EVALUATOR_SECRET_K
+
+    phone = "+254712345678"
+    x = VOPRFEngine.encode_input("kenya-pilot", phone)
+
+    # 1. Honest protocol flow (Client Blinding -> Evaluator Evaluation -> Client Unblinding -> Finalize)
+    B_honest, r_honest = VOPRFEngine.blind(x)
+    Z_honest, proof = VOPRFEngine.evaluate(EVALUATOR_SECRET_K, B_honest, EVALUATOR_PUBLIC_KEY)
+    assert verify_dleq_proof(GENERATOR_G, EVALUATOR_PUBLIC_KEY, B_honest, Z_honest, proof)
+    N_honest = VOPRFEngine.unblind(Z_honest, r_honest)
+    token_honest = VOPRFEngine.finalize(x, N_honest)
+
+    # 2. Attacker shortcut attempt using legacy scalar formula s(x)
+    dst_legacy = b"HashToGroup-oan-phone-dedup-v1-"
+    h_legacy = hashlib.sha512(dst_legacy + x).digest()
+    s_legacy = int.from_bytes(h_legacy, "big") % (N_ORDER - 1) + 1
+
+    # Attacker computes s_legacy * K using only public key EVALUATOR_PUBLIC_KEY
+    forged_point_pt = point_mul(s_legacy, EVALUATOR_PUBLIC_KEY.pt)
+    assert forged_point_pt is not None
+    forged_point = GroupElement(forged_point_pt)
+    token_forged = VOPRFEngine.finalize(x, forged_point)
+
+    # 3. CRITICAL REGRESSION ASSERTION:
+    # Under a correct try-and-increment hash-to-curve, the attacker's forged point
+    # CANNOT match N_honest, and the forged token CANNOT match token_honest!
+    assert N_honest.pt != forged_point.pt, "CRITICAL DEFECT: Attacker forged unblinded element N without private key!"
+    assert token_honest != token_forged, "CRITICAL DEFECT: Attacker forged finalized token T using public key shortcut!"
+
+def test_consent_check_unauthenticated_rejected():
+    """
+    TASK 5 HARDENING VERIFICATION:
+    Asserts that an unauthenticated call to GET /v1/consent/check
+    with no partner headers is strictly rejected with HTTP 401 Unauthorized.
+    """
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+    resp = client.get("/v1/consent/check?entity_id=00000000-0000-0000-0000-000000000000&purpose=ADVISORY")
+    assert resp.status_code == 401
+    assert "detail" in resp.json()
+
