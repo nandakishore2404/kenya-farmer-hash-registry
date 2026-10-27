@@ -3,475 +3,492 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Registry Dev Console - Kenya Farmer Hash Registry</title>
+    <title>Kenya Farmer Identity, Deduplication & Consent Architecture | Interactive Prototype</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .level-card {
+            transition: all 0.25s ease;
+        }
+        .level-card:hover {
+            transform: translateY(-2px);
+        }
+    </style>
 </head>
-<body class="bg-slate-900 text-slate-100 min-h-screen">
-    <!-- Top Bar -->
-    <header class="border-b border-slate-800 bg-slate-950/80 backdrop-blur sticky top-0 z-50 px-6 py-4 flex items-center justify-between">
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+    <!-- Top Navigation Header -->
+    <header class="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-50 px-6 py-4 flex flex-wrap items-center justify-between gap-4">
         <div class="flex items-center space-x-3">
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">DEV ONLY</span>
-            <h1 class="text-lg font-bold text-white tracking-tight">Kenya Farmer Hash Registry — Interactive Test Console</h1>
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">OAN KENYA DPI</span>
+            <h1 class="text-lg font-bold text-white tracking-tight">Farmer Identity, Deduplication & Consent Architecture</h1>
         </div>
         <div class="flex items-center space-x-4 text-sm">
-            <a href="/dashboard" target="_blank" class="text-emerald-400 hover:text-emerald-300 font-medium">Open Production Dashboard &rarr;</a>
-            <span class="text-slate-500">|</span>
-            <span class="text-slate-400">Environment: <strong class="text-white">{{ env }}</strong></span>
+            <a href="/dashboard" target="_blank" class="inline-flex items-center px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-400 font-semibold transition">
+                <span>Open Advisory Dashboard</span>
+                <span class="ml-1.5 font-bold">&rarr;</span>
+            </a>
+            <a href="/v1/telemetry/dpi-metrics" target="_blank" class="text-xs text-sky-400 hover:text-sky-300 font-mono">
+                /v1/telemetry/dpi-metrics
+            </a>
         </div>
     </header>
 
-    <div class="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <!-- Left: Action & Test Controls (7 cols) -->
-        <div class="lg:col-span-7 space-y-6">
-            <!-- Parameter Form -->
-            <div class="bg-slate-800/80 rounded-xl border border-slate-700/60 p-5 shadow-lg">
-                <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400 mb-4">1. Test Parameters</h2>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-xs font-medium text-slate-300 mb-1">Sending Partner</label>
-                        <select id="partnerSelect" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-emerald-500">
-                            <option value="test_partner_a" data-key="test_partner_a_api_key_2026">Test Partner A (test_partner_a)</option>
-                            <option value="test_partner_b" data-key="test_partner_b_api_key_2026">Test Partner B (test_partner_b)</option>
-                            <option value="test_partner_c" data-key="test_partner_c_api_key_2026">Test Partner C (test_partner_c)</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-slate-300 mb-1">Partner Shared Secret (PARTNER_KEY)</label>
-                        <input id="partnerSecretKey" type="text" value="partner_shared_pilot_secret" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-slate-300 mb-1">Kenyan Mobile Phone</label>
-                        <input id="phoneInput" type="text" value="0712 345 678" placeholder="e.g. 0712345678 or +254..." class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-slate-300 mb-1">County Code</label>
-                        <select id="countyInput" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white">
-                            <option value="047">047 - Nairobi</option>
-                            <option value="032">032 - Nakuru</option>
-                            <option value="019">019 - Nyeri</option>
-                            <option value="042">042 - Kisumu</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-slate-300 mb-1">Gender & Age Band</label>
-                        <div class="grid grid-cols-2 gap-2">
-                            <select id="genderInput" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-sm text-white">
-                                <option value="F">F (Female)</option>
-                                <option value="M">M (Male)</option>
-                            </select>
-                            <select id="ageBandInput" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-sm text-white">
-                                <option value="18-24">18-24</option>
-                                <option value="25-34" selected>25-34</option>
-                                <option value="35-44">35-44</option>
-                                <option value="45-54">45-54</option>
-                                <option value="55-64">55-64</option>
-                                <option value="65+">65+</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-slate-300 mb-1">Onboarded At (UTC)</label>
-                        <input id="onboardedAtInput" type="text" value="2026-10-15T12:00:00Z" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono text-xs">
-                    </div>
+    <div class="max-w-7xl mx-auto p-6 space-y-6">
+        <!-- Live Observability Cards Row -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-sm">
+                <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Unique Verified Farmers</div>
+                <div id="statUniqueFarmers" class="text-2xl font-bold text-emerald-400 mt-1">...</div>
+                <div class="text-[11px] text-slate-500 mt-0.5">Canonical RFC 9497 entities</div>
+            </div>
+            <div class="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-sm">
+                <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Active Partner Registrations</div>
+                <div id="statActiveLinks" class="text-2xl font-bold text-sky-400 mt-1">...</div>
+                <div class="text-[11px] text-slate-500 mt-0.5">Total across all providers</div>
+            </div>
+            <div class="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-sm">
+                <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Cross-Provider Overlap</div>
+                <div id="statOverlapRate" class="text-2xl font-bold text-purple-400 mt-1">...</div>
+                <div class="text-[11px] text-slate-500 mt-0.5"><span id="statOverlapCount">0</span> multi-partner farmers</div>
+            </div>
+            <div class="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-sm">
+                <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Consent Registry (PEP)</div>
+                <div class="text-2xl font-bold mt-1 text-white">
+                    <span id="statActiveConsents" class="text-emerald-400">...</span>
+                    <span class="text-xs text-slate-500 font-normal">/</span>
+                    <span id="statRemovedLinks" class="text-rose-400 text-lg">...</span>
                 </div>
-                <div class="mt-4 pt-3 border-t border-slate-700/60 flex items-center justify-between text-xs text-slate-400">
-                    <div>Computed Hash: <span id="computedHashPreview" class="font-mono text-emerald-400 font-semibold">computing...</span></div>
+                <div class="text-[11px] text-slate-500 mt-0.5">Active / Withdrawn (Enforced)</div>
+            </div>
+        </div>
+
+        <!-- Section 1: Interactive Farmer Mobile Number Registration & Testing -->
+        <div class="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 shadow-xl">
+            <div class="flex flex-wrap items-center justify-between pb-4 mb-5 border-b border-slate-800 gap-3">
+                <div>
+                    <h2 class="text-base font-bold text-white flex items-center gap-2">
+                        <span class="h-2.5 w-2.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
+                        1. Interactive Farmer Mobile Number Tester (Live VOPRF Pipeline)
+                    </h2>
+                    <p class="text-xs text-slate-400 mt-0.5">
+                        Type any Kenyan mobile number. The client normalises to E.164, blinds the scalar point, queries the HSM Evaluator, derives canonical token T, and registers or deduplicates in the Registry.
+                    </p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="fillRandomPhone()" class="text-xs px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700 transition">
+                        Random Kenyan Phone
+                    </button>
+                    <button onclick="refreshMetrics()" class="text-xs px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded border border-slate-700 transition">
+                        Refresh Counts
+                    </button>
                 </div>
             </div>
 
-            <!-- Action Buttons Grid -->
-            <div class="bg-slate-800/80 rounded-xl border border-slate-700/60 p-5 shadow-lg space-y-3">
-                <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400 mb-3">2. Execute Registry Actions</h2>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <button onclick="executeAction('register')" class="text-left p-3 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 font-medium transition flex items-center justify-between">
-                        <div>
-                            <div class="font-semibold text-white">1. Register Farmer</div>
-                            <div class="text-xs text-emerald-400/80">POST /v1/farmers with selected partner</div>
-                        </div>
-                        <span class="text-xl">&rarr;</span>
-                    </button>
-                    <button onclick="executeAction('resend')" class="text-left p-3 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-300 font-medium transition flex items-center justify-between">
-                        <div>
-                            <div class="font-semibold text-white">2. Resend Same Partner</div>
-                            <div class="text-xs text-blue-400/80">Idempotency check (no duplicate link)</div>
-                        </div>
-                        <span class="text-xl">&rarr;</span>
-                    </button>
-                    <button onclick="executeAction('overlap')" class="text-left p-3 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-purple-300 font-medium transition flex items-center justify-between">
-                        <div>
-                            <div class="font-semibold text-white">3. Register Overlap Partner</div>
-                            <div class="text-xs text-purple-400/80">Sends same phone with Test Partner B</div>
-                        </div>
-                        <span class="text-xl">&rarr;</span>
-                    </button>
-                    <button onclick="executeAction('backdate')" class="text-left p-3 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-300 font-medium transition flex items-center justify-between">
-                        <div>
-                            <div class="font-semibold text-white">4. Back-date Test</div>
-                            <div class="text-xs text-amber-400/80">Sends older onboarded_at for Partner B</div>
-                        </div>
-                        <span class="text-xl">&rarr;</span>
-                    </button>
-                    <button onclick="executeAction('withdraw')" class="text-left p-3 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 font-medium transition flex items-center justify-between">
-                        <div>
-                            <div class="font-semibold text-white">5. Withdraw Consent</div>
-                            <div class="text-xs text-rose-400/80">DELETE /v1/farmers/{hash}</div>
-                        </div>
-                        <span class="text-xl">&rarr;</span>
-                    </button>
-                    <button onclick="executeAction('replay')" class="text-left p-3 rounded-lg bg-red-950/40 hover:bg-red-900/50 border border-red-700/60 text-red-300 font-medium transition flex items-center justify-between">
-                        <div>
-                            <div class="font-semibold text-white">7. Replay Attack Test</div>
-                            <div class="text-xs text-red-400/80">Resend with identical nonce &rarr; 401</div>
-                        </div>
-                        <span class="text-xl">&rarr;</span>
-                    </button>
+            <!-- Input Form Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
+                <div class="lg:col-span-2">
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Kenyan Mobile Number</label>
+                    <input id="inputPhone" type="text" value="+254 712 345 678" placeholder="e.g. 0712345678 or +254..." 
+                        class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-emerald-400 font-mono font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none">
                 </div>
-
-                <!-- CSV Upload Box -->
-                <div class="mt-4 pt-4 border-t border-slate-700/60">
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-xs font-semibold uppercase text-slate-300">6. Bulk CSV Upload (POST /v1/farmers:upload)</span>
-                        <a href="/dev/sample-csv" download class="text-xs text-emerald-400 hover:underline">Download 20-Row Sample CSV</a>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Provider / Partner</label>
+                    <select id="inputPartner" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                        <option value="test_partner_a" selected>One Acre Fund (A)</option>
+                        <option value="test_partner_b">DigiFarm Safaricom (B)</option>
+                        <option value="test_partner_c">KTDA Tea Coop (C)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Attribution Role</label>
+                    <select id="inputRole" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                        <option value="onboarder" selected>onboarder (1st discoverer)</option>
+                        <option value="contributor">contributor (overlap)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">County & Gender</label>
+                    <div class="grid grid-cols-2 gap-1.5">
+                        <select id="inputCounty" class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-white">
+                            <option value="047" selected>047 Nairobi</option>
+                            <option value="032">032 Nakuru</option>
+                            <option value="019">019 Nyeri</option>
+                            <option value="042">042 Kisumu</option>
+                            <option value="022">022 Kiambu</option>
+                        </select>
+                        <select id="inputGender" class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-white">
+                            <option value="F" selected>F (Female)</option>
+                            <option value="M">M (Male)</option>
+                        </select>
                     </div>
-                    <div class="flex items-center space-x-3">
-                        <input id="csvFileInput" type="file" accept=".csv" class="text-xs text-slate-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-slate-700 file:text-white hover:file:bg-slate-600">
-                        <button onclick="uploadSampleCSVDirectly()" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-xs text-white rounded-md font-medium">Load & Upload Sample</button>
-                        <button onclick="executeCsvUpload()" class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-xs text-white rounded-md font-semibold">Upload Selected File</button>
-                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Consent Purpose</label>
+                    <select id="inputPurpose" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-white focus:ring-2 focus:ring-emerald-500">
+                        <option value="agri_advisory_sms" selected>agri_advisory_sms</option>
+                        <option value="input_credit_scoring">credit_scoring</option>
+                        <option value="tea_yield_advisory">tea_yield_advisory</option>
+                    </select>
                 </div>
             </div>
 
-            <!-- Inspector Panel -->
-            <div class="bg-slate-800/80 rounded-xl border border-slate-700/60 p-5 shadow-lg">
-                <div class="flex items-center justify-between mb-2">
-                    <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Response Inspector</h2>
-                    <span id="responseStatusBadge" class="hidden text-xs font-mono px-2 py-0.5 rounded font-bold"></span>
+            <!-- Interactive Action Buttons -->
+            <div class="flex flex-wrap items-center gap-3 mb-6">
+                <button onclick="executeVOPRFRegister()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-emerald-950">
+                    <span>1. Register Farmer via RFC 9497 VOPRF DPI</span>
+                    <span>&rarr;</span>
+                </button>
+                <button onclick="executePEPCheck()" class="px-4 py-2 bg-sky-700 hover:bg-sky-600 text-white rounded-lg text-xs font-bold transition flex items-center gap-2">
+                    <span>2. Test Advisory Delivery (Policy Enforcement Point - PEP)</span>
+                    <span>&rarr;</span>
+                </button>
+                <button onclick="executeConsentWithdraw()" class="px-4 py-2 bg-rose-800 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-2">
+                    <span>3. Withdraw Consent (Opt-Out)</span>
+                    <span>&rarr;</span>
+                </button>
+            </div>
+
+            <!-- Output: Level-by-Level Execution Visualizer -->
+            <div id="executionLevelContainer" class="hidden space-y-3">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">
+                        Level-by-Level Architectural Trace (<span id="traceTitle">Live Execution</span>)
+                    </h3>
+                    <span id="traceEntityBadge" class="text-xs font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300"></span>
                 </div>
-                <div class="space-y-2 text-xs font-mono">
-                    <div><span class="text-slate-500">Request:</span> <span id="reqMethodUrl" class="text-slate-300">-</span></div>
-                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-slate-300 overflow-x-auto max-h-48 whitespace-pre" id="responseBodyPreview">// Execute an action to see response output</div>
+                <div id="levelsGrid" class="grid grid-cols-1 md:grid-cols-5 gap-3">
+                    <!-- Populated dynamically with Level 1 to Level 5 cards -->
                 </div>
             </div>
         </div>
 
-        <!-- Right: Unsuppressed Metrics & Verification Panel (5 cols) -->
-        <div class="lg:col-span-5 space-y-6">
-            <div class="bg-slate-800/80 rounded-xl border border-slate-700/60 p-5 shadow-lg">
-                <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Live Unsuppressed Metrics</h2>
-                    <button onclick="refreshMetrics()" class="text-xs text-emerald-400 hover:underline">Refresh</button>
-                </div>
-                
-                <div class="grid grid-cols-3 gap-3 mb-4">
-                    <div class="bg-slate-900 p-3 rounded-lg border border-slate-700/50 text-center">
-                        <div class="text-xs text-slate-400">Unique Farmers</div>
-                        <div id="statUniqueFarmers" class="text-2xl font-bold text-white mt-1">-</div>
+        <!-- Section 2: Different Scenarios Walkthrough at Each Level -->
+        <div class="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 shadow-xl">
+            <div class="pb-4 mb-5 border-b border-slate-800">
+                <h2 class="text-base font-bold text-white flex items-center gap-2">
+                    <span class="h-2.5 w-2.5 rounded-full bg-purple-500 inline-block"></span>
+                    2. Architecture Scenario Suite: How Each Scenario Is Handled at Each Level
+                </h2>
+                <p class="text-xs text-slate-400 mt-0.5">
+                    Click any scenario card below to trigger a live run. The prototype will step through Level 1 (Phone Input), Level 2 (Evaluator HSM), Level 3 (Unblinding), Level 4 (Registry & Attribution), and Level 5 (PEP Policy Enforcement).
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <!-- Scenario 1 Card -->
+                <div class="level-card bg-slate-950/70 p-4 rounded-xl border border-slate-800 hover:border-emerald-500/50 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Scenario 1</span>
+                            <span class="text-xs text-slate-500">First-Time</span>
+                        </div>
+                        <h4 class="text-sm font-bold text-white mb-1">Single Farmer, New Onboarding</h4>
+                        <p class="text-xs text-slate-400 leading-relaxed mb-3">
+                            Farmer registers with One Acre Fund. Blinded scalar point verified at Evaluator HSM, new Entity UUID issued, role marked as <code class="text-emerald-400">onboarder</code>.
+                        </p>
                     </div>
-                    <div class="bg-slate-900 p-3 rounded-lg border border-slate-700/50 text-center">
-                        <div class="text-xs text-slate-400">Active Links</div>
-                        <div id="statActiveLinks" class="text-2xl font-bold text-emerald-400 mt-1">-</div>
-                    </div>
-                    <div class="bg-slate-900 p-3 rounded-lg border border-slate-700/50 text-center">
-                        <div class="text-xs text-slate-400">Withdrawn</div>
-                        <div id="statRemovedLinks" class="text-2xl font-bold text-rose-400 mt-1">-</div>
-                    </div>
+                    <button onclick="runScenario('scenario_1_new_farmer')" class="w-full py-2 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-300 text-xs font-semibold rounded-lg transition">
+                        Run Scenario 1 &rarr;
+                    </button>
                 </div>
 
-                <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Partner Breakdown</h3>
-                <div id="partnerBreakdownList" class="space-y-2 mb-4">
-                    <!-- Dynamic -->
+                <!-- Scenario 2 Card -->
+                <div class="level-card bg-slate-950/70 p-4 rounded-xl border border-slate-800 hover:border-purple-500/50 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20">Scenario 2</span>
+                            <span class="text-xs text-slate-500">Overlap</span>
+                        </div>
+                        <h4 class="text-sm font-bold text-white mb-1">Cross-Provider Overlap</h4>
+                        <p class="text-xs text-slate-400 leading-relaxed mb-3">
+                            Same farmer registers with DigiFarm. Demonstrates that VOPRF produces the exact same token (Provider ID decoupled). No duplicate entity is created; role marked as <code class="text-purple-400">contributor</code>.
+                        </p>
+                    </div>
+                    <button onclick="runScenario('scenario_2_cross_provider_overlap')" class="w-full py-2 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 text-purple-300 text-xs font-semibold rounded-lg transition">
+                        Run Scenario 2 &rarr;
+                    </button>
                 </div>
 
-                <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Recent Link Events (Audit Trail)</h3>
-                <div class="overflow-hidden rounded-lg border border-slate-700/50 max-h-64 overflow-y-auto">
+                <!-- Scenario 3 Card -->
+                <div class="level-card bg-slate-950/70 p-4 rounded-xl border border-slate-800 hover:border-amber-500/50 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">Scenario 3</span>
+                            <span class="text-xs text-slate-500">Shared SIM</span>
+                        </div>
+                        <h4 class="text-sm font-bold text-white mb-1">Shared Household Mobile Phone</h4>
+                        <p class="text-xs text-slate-400 leading-relaxed mb-3">
+                            Two household members share one phone. Demonstrates how phone-derived identity resolves to a shared pseudonymous device entity without legal person identity conflation.
+                        </p>
+                    </div>
+                    <button onclick="runScenario('scenario_3_shared_phone')" class="w-full py-2 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/30 text-amber-300 text-xs font-semibold rounded-lg transition">
+                        Run Scenario 3 &rarr;
+                    </button>
+                </div>
+
+                <!-- Scenario 4 Card -->
+                <div class="level-card bg-slate-950/70 p-4 rounded-xl border border-slate-800 hover:border-sky-500/50 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20">Scenario 4</span>
+                            <span class="text-xs text-slate-500">Number Change</span>
+                        </div>
+                        <h4 class="text-sm font-bold text-white mb-1">Changed / Reassigned Phone</h4>
+                        <p class="text-xs text-slate-400 leading-relaxed mb-3">
+                            Farmer migrates to a new SIM card. Demonstrates <code class="text-sky-400">TokenAlias</code> rotation linking new token to the same Entity UUID while preserving historical attribution.
+                        </p>
+                    </div>
+                    <button onclick="runScenario('scenario_4_changed_phone')" class="w-full py-2 bg-sky-600/20 hover:bg-sky-600/30 border border-sky-500/30 text-sky-300 text-xs font-semibold rounded-lg transition">
+                        Run Scenario 4 &rarr;
+                    </button>
+                </div>
+
+                <!-- Scenario 5 Card -->
+                <div class="level-card bg-slate-950/70 p-4 rounded-xl border border-slate-800 hover:border-rose-500/50 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20">Scenario 5</span>
+                            <span class="text-xs text-slate-500">Opt-Out & PEP</span>
+                        </div>
+                        <h4 class="text-sm font-bold text-white mb-1">Consent Withdrawal & PEP Block</h4>
+                        <p class="text-xs text-slate-400 leading-relaxed mb-3">
+                            Farmer sends opt-out request. Consent transitions to WITHDRAWN. Policy Enforcement Point (PEP) immediately blocks subsequent advisory SMS dispatch (403 Forbidden).
+                        </p>
+                    </div>
+                    <button onclick="runScenario('scenario_5_consent_withdrawal_pep')" class="w-full py-2 bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/30 text-rose-300 text-xs font-semibold rounded-lg transition">
+                        Run Scenario 5 &rarr;
+                    </button>
+                </div>
+
+                <!-- Scenario 6 Card -->
+                <div class="level-card bg-slate-950/70 p-4 rounded-xl border border-slate-800 hover:border-emerald-500/50 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Scenario 6</span>
+                            <span class="text-xs text-slate-500">Offline Sync</span>
+                        </div>
+                        <h4 class="text-sm font-bold text-white mb-1">Rural Store-and-Forward</h4>
+                        <p class="text-xs text-slate-400 leading-relaxed mb-3">
+                            Agent registers farmer with zero connectivity. Queued in local encrypted SQLite store. Synced when back online, preserving original attribution timestamp and zeroizing local storage.
+                        </p>
+                    </div>
+                    <button onclick="runScenario('scenario_6_offline_store_forward')" class="w-full py-2 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-300 text-xs font-semibold rounded-lg transition">
+                        Run Scenario 6 &rarr;
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 3: Live Partner Breakdown & Recent Events Audit -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <!-- Partner Breakdown (4 cols) -->
+            <div class="lg:col-span-4 bg-slate-900/80 rounded-2xl border border-slate-800 p-5 shadow-lg">
+                <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-3">Partner Registrations (Attribution)</h3>
+                <div id="partnerList" class="space-y-2">
+                    <!-- Populated dynamically -->
+                </div>
+                <div class="mt-4 pt-3 border-t border-slate-800 text-[11px] text-slate-400">
+                    Attribution is decoupled from identity. Provider ID is stored in the association layer, not inside the cryptographic hash input.
+                </div>
+            </div>
+
+            <!-- Recent Link Events Audit Trail (8 cols) -->
+            <div class="lg:col-span-8 bg-slate-900/80 rounded-2xl border border-slate-800 p-5 shadow-lg">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider">Live Registration & Association Audit Trail</h3>
+                    <span class="text-[11px] text-slate-500 font-mono">Real-time Stream</span>
+                </div>
+                <div class="overflow-x-auto max-h-64 overflow-y-auto rounded-lg border border-slate-800">
                     <table class="w-full text-left text-xs font-mono">
                         <thead class="bg-slate-950 text-slate-400 border-b border-slate-800">
                             <tr>
                                 <th class="p-2">Partner</th>
-                                <th class="p-2">Code</th>
-                                <th class="p-2">Received At</th>
+                                <th class="p-2">Farmer Code</th>
+                                <th class="p-2">Role</th>
+                                <th class="p-2">Timestamp</th>
                                 <th class="p-2">Status</th>
                             </tr>
                         </thead>
-                        <tbody id="recentEventsTable" class="divide-y divide-slate-800 text-slate-300">
-                            <tr><td colspan="4" class="p-2 text-center text-slate-500">Loading events...</td></tr>
+                        <tbody id="recentEventsTable" class="divide-y divide-slate-800/80 text-slate-300">
+                            <tr><td colspan="5" class="p-3 text-center text-slate-500">Loading audit events...</td></tr>
                         </tbody>
                     </table>
                 </div>
             </div>
-
-            <!-- Developer Hints Box -->
-            <div class="bg-slate-900/90 rounded-xl border border-slate-800 p-4 text-xs text-slate-400 space-y-2">
-                <div class="font-semibold text-slate-300 uppercase tracking-wider">Zero-Knowledge Invariants:</div>
-                <ul class="list-disc list-inside space-y-1 text-slate-400">
-                    <li>Registry stores only double-keyed code ($H(\text{SERVER\_KEY}, H(\text{PARTNER\_KEY}, \text{phone}))$).</li>
-                    <li>First-to-onboard credit is determined strictly by <code class="text-emerald-400">received_at</code> (server arrival time).</li>
-                    <li>Consent withdrawal deletes the partner link; if no active links remain, the farmer record is permanently purged.</li>
-                </ul>
-            </div>
         </div>
     </div>
 
-    <!-- Client-side Cryptography & Runner Script -->
     <script>
-        let lastSentRequest = null;
+        let lastRegisteredEntityId = null;
 
-        // Normalise Kenyan Phone
-        function normaliseKenyanPhone(phone) {
-            let cleaned = phone.replace(/[\s\-\.\(\)]/g, "").trim();
-            if (/^0\d{9}$/.test(cleaned)) cleaned = "+254" + cleaned.substring(1);
-            else if (/^254\d{9}$/.test(cleaned)) cleaned = "+" + cleaned;
-            else if (/^[71]\d{8}$/.test(cleaned)) cleaned = "+254" + cleaned;
-            
-            if (!/^\+254[71]\d{8}$/.test(cleaned)) {
-                throw new Error("Invalid Kenyan phone number format. Must be +254 7... or +254 1...");
-            }
-            return cleaned;
-        }
-
-        // Web Crypto SHA-256
-        async function sha256Hex(str) {
-            const enc = new TextEncoder();
-            const hashBuf = await crypto.subtle.digest("SHA-256", enc.encode(str));
-            return Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, "0")).join("");
-        }
-
-        // Web Crypto HMAC-SHA256
-        async function hmacSha256Hex(keyStr, dataStr) {
-            const enc = new TextEncoder();
-            const keyBuf = enc.encode(keyStr);
-            const dataBuf = enc.encode(dataStr);
-            const cryptoKey = await crypto.subtle.importKey(
-                "raw", keyBuf, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
-            );
-            const sigBuf = await crypto.subtle.sign("HMAC", cryptoKey, dataBuf);
-            return Array.from(new Uint8Array(sigBuf)).map(b => b.toString(16).padStart(2, "0")).join("");
-        }
-
-        // Compute Client Hash: HMAC-SHA256(PARTNER_KEY, "ke-farmer:v1:" + norm_phone)
-        async function computeClientHash() {
-            try {
-                const phone = document.getElementById("phoneInput").value;
-                const key = document.getElementById("partnerSecretKey").value;
-                const norm = normaliseKenyanPhone(phone);
-                const hash = await hmacSha256Hex(key, "ke-farmer:v1:" + norm);
-                document.getElementById("computedHashPreview").innerText = hash;
-                return { norm, hash };
-            } catch (err) {
-                document.getElementById("computedHashPreview").innerText = "Error: " + err.message;
-                return null;
-            }
-        }
-
-        // Generate Signature v2 headers
-        async function buildSignatureV2Headers(partnerId, apiKey, method, path, query, bodyStr, forcedNonce = null, forcedTimestamp = null) {
-            const timestamp = forcedTimestamp || Math.floor(Date.now() / 1000).toString();
-            const nonce = forcedNonce || Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2, "0")).join("");
-            const bodyHash = await sha256Hex(bodyStr);
-            const canonical = `${method.toUpperCase()}\n${path}\n${query}\n${timestamp}\n${nonce}\n${bodyHash}`;
-            const sig = await hmacSha256Hex(apiKey, canonical);
-
-            return {
-                "X-Partner-Key": apiKey,
-                "X-Timestamp": timestamp,
-                "X-Nonce": nonce,
-                "X-Signature": sig
-            };
-        }
-
-        document.getElementById("phoneInput").addEventListener("input", computeClientHash);
-        document.getElementById("partnerSecretKey").addEventListener("input", computeClientHash);
-
-        async function executeAction(actionType) {
-            const hRes = await computeClientHash();
-            if (!hRes) return;
-            const hash = hRes.hash;
-
-            const partnerSelect = document.getElementById("partnerSelect");
-            let partnerId = partnerSelect.value;
-            let apiKey = partnerSelect.selectedOptions[0].dataset.key;
-
-            let method = "POST";
-            let path = "/v1/farmers";
-            let bodyObj = null;
-            let bodyStr = "";
-
-            if (actionType === "register") {
-                bodyObj = {
-                    hash: hash,
-                    gender: document.getElementById("genderInput").value,
-                    age_band: document.getElementById("ageBandInput").value,
-                    county_code: document.getElementById("countyInput").value,
-                    onboarded_at: document.getElementById("onboardedAtInput").value
-                };
-                bodyStr = JSON.stringify(bodyObj);
-            } else if (actionType === "resend") {
-                bodyObj = {
-                    hash: hash,
-                    gender: document.getElementById("genderInput").value,
-                    age_band: document.getElementById("ageBandInput").value,
-                    county_code: document.getElementById("countyInput").value,
-                    onboarded_at: document.getElementById("onboardedAtInput").value
-                };
-                bodyStr = JSON.stringify(bodyObj);
-            } else if (actionType === "overlap") {
-                partnerId = "test_partner_b";
-                apiKey = "test_partner_b_api_key_2026";
-                bodyObj = {
-                    hash: hash,
-                    gender: document.getElementById("genderInput").value,
-                    age_band: document.getElementById("ageBandInput").value,
-                    county_code: document.getElementById("countyInput").value,
-                    onboarded_at: document.getElementById("onboardedAtInput").value
-                };
-                bodyStr = JSON.stringify(bodyObj);
-            } else if (actionType === "backdate") {
-                partnerId = "test_partner_b";
-                apiKey = "test_partner_b_api_key_2026";
-                bodyObj = {
-                    hash: hash,
-                    gender: document.getElementById("genderInput").value,
-                    age_band: document.getElementById("ageBandInput").value,
-                    county_code: document.getElementById("countyInput").value,
-                    onboarded_at: "2026-10-02T10:00:00Z"
-                };
-                bodyStr = JSON.stringify(bodyObj);
-            } else if (actionType === "withdraw") {
-                method = "DELETE";
-                path = `/v1/farmers/${hash}`;
-                bodyStr = "";
-            } else if (actionType === "replay") {
-                if (!lastSentRequest) {
-                    alert("No previous request available to replay! Please perform a registration first.");
-                    return;
-                }
-                // Replay previous request with identical headers
-                const resp = await fetch(lastSentRequest.url, {
-                    method: lastSentRequest.method,
-                    headers: lastSentRequest.headers,
-                    body: lastSentRequest.body || undefined
-                });
-                renderResponse(lastSentRequest.method, lastSentRequest.url, resp);
-                refreshMetrics();
-                return;
-            }
-
-            const headers = await buildSignatureV2Headers(partnerId, apiKey, method, path, "", bodyStr);
-            if (bodyStr) headers["Content-Type"] = "application/json";
-
-            lastSentRequest = {
-                method: method,
-                url: path,
-                headers: Object.assign({}, headers),
-                body: bodyStr
-            };
-
-            const resp = await fetch(path, {
-                method: method,
-                headers: headers,
-                body: bodyStr || undefined
-            });
-
-            renderResponse(method, path, resp);
-            refreshMetrics();
-        }
-
-        async function executeCsvUpload() {
-            const fileInput = document.getElementById("csvFileInput");
-            if (!fileInput.files.length) {
-                alert("Please select a CSV file first, or click 'Load & Upload Sample'.");
-                return;
-            }
-            const file = fileInput.files[0];
-            const text = await file.text();
-            await uploadCsvBytes(text);
-        }
-
-        async function uploadSampleCSVDirectly() {
-            const sampleResp = await fetch("/dev/sample-csv");
-            if (!sampleResp.ok) {
-                alert("Failed to load sample CSV: " + sampleResp.statusText);
-                return;
-            }
-            const text = await sampleResp.text();
-            await uploadCsvBytes(text);
-        }
-
-        async function uploadCsvBytes(csvText) {
-            const partnerId = "test_partner_c";
-            const apiKey = "test_partner_c_api_key_2026";
-            const path = "/v1/farmers:upload";
-            const method = "POST";
-
-            const headers = await buildSignatureV2Headers(partnerId, apiKey, method, path, "", csvText);
-            headers["Content-Type"] = "text/csv";
-
-            const resp = await fetch(path, {
-                method: method,
-                headers: headers,
-                body: csvText
-            });
-
-            renderResponse(method, path, resp);
-            refreshMetrics();
-        }
-
-        async function renderResponse(method, url, resp) {
-            const badge = document.getElementById("responseStatusBadge");
-            badge.innerText = `${resp.status} ${resp.statusText}`;
-            badge.className = resp.ok ? "text-xs font-mono px-2 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "text-xs font-mono px-2 py-0.5 rounded font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30";
-            badge.classList.remove("hidden");
-
-            document.getElementById("reqMethodUrl").innerText = `${method} ${url}`;
-
-            let data;
-            const text = await resp.text();
-            try {
-                data = JSON.stringify(JSON.parse(text), null, 2);
-            } catch (e) {
-                data = text;
-            }
-            document.getElementById("responseBodyPreview").innerText = data;
+        function fillRandomPhone() {
+            const prefix = ["0712", "0722", "0733", "0799", "0701", "0745"][Math.floor(Math.random() * 6)];
+            const suffix = Math.floor(100000 + Math.random() * 900000);
+            document.getElementById("inputPhone").value = `${prefix} ${suffix}`;
         }
 
         async function refreshMetrics() {
             try {
-                const resp = await fetch("/dev/unsuppressed-metrics");
-                if (!resp.ok) return;
-                const m = await resp.json();
+                const res = await fetch("/dev/unsuppressed-metrics");
+                if (!res.ok) return;
+                const m = await res.json();
 
-                document.getElementById("statUniqueFarmers").innerText = m.total_unique_farmers;
-                document.getElementById("statActiveLinks").innerText = m.total_active_links;
-                document.getElementById("statRemovedLinks").innerText = m.total_removed_links;
+                document.getElementById("statUniqueFarmers").innerText = m.total_unique_farmers.toLocaleString();
+                document.getElementById("statActiveLinks").innerText = m.total_active_links.toLocaleString();
+                document.getElementById("statOverlapRate").innerText = m.overlap_rate_pct + "%";
+                document.getElementById("statOverlapCount").innerText = m.overlap_count.toLocaleString();
+                document.getElementById("statActiveConsents").innerText = (m.active_consents || m.total_unique_farmers).toLocaleString();
+                document.getElementById("statRemovedLinks").innerText = (m.total_removed_links || 0).toLocaleString();
 
-                const pList = document.getElementById("partnerBreakdownList");
+                const pList = document.getElementById("partnerList");
                 pList.innerHTML = m.partners.map(p => `
-                    <div class="flex items-center justify-between text-xs bg-slate-900/60 p-2 rounded border border-slate-800">
+                    <div class="flex items-center justify-between text-xs bg-slate-950/60 p-2.5 rounded-lg border border-slate-800">
                         <span class="text-slate-300 font-medium">${p.name} (${p.partner_id})</span>
-                        <span class="font-mono ${p.active ? 'text-emerald-400' : 'text-slate-500 line-through'} font-bold">${p.active_links} links</span>
+                        <span class="font-mono font-bold text-emerald-400">${p.active_links} links</span>
                     </div>
                 `).join("");
 
-                const eventsTbody = document.getElementById("recentEventsTable");
-                if (!m.recent_links.length) {
-                    eventsTbody.innerHTML = '<tr><td colspan="4" class="p-2 text-center text-slate-500">No events yet. Register a farmer to begin.</td></tr>';
-                } else {
-                    eventsTbody.innerHTML = m.recent_links.map(l => `
+                const tbody = document.getElementById("recentEventsTable");
+                if (m.recent_links && m.recent_links.length > 0) {
+                    tbody.innerHTML = m.recent_links.map(l => `
                         <tr>
                             <td class="p-2 font-medium text-slate-200">${l.partner_id}</td>
-                            <td class="p-2 text-slate-400">${l.farmer_code}</td>
+                            <td class="p-2 text-emerald-400">${l.farmer_code}</td>
+                            <td class="p-2"><span class="px-1.5 py-0.5 rounded text-[10px] bg-slate-800 text-slate-300">${l.role || 'onboarder'}</span></td>
                             <td class="p-2 text-slate-400">${l.received_at ? l.received_at.split('T')[1].substring(0,8) : '-'}</td>
                             <td class="p-2"><span class="px-1.5 py-0.5 rounded text-[10px] ${l.status === 'active' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}">${l.status}</span></td>
                         </tr>
                     `).join("");
                 }
             } catch (e) {
-                console.error("Failed to refresh metrics:", e);
+                console.error("Failed to load metrics:", e);
             }
         }
 
-        // Init
-        computeClientHash();
+        function renderExecutionLevels(title, levels, entityId, isNew) {
+            const container = document.getElementById("executionLevelContainer");
+            container.classList.remove("hidden");
+            document.getElementById("traceTitle").innerText = title;
+            document.getElementById("traceEntityBadge").innerText = `Entity UUID: ${entityId} (${isNew ? 'NEW FARMER' : 'EXISTING OVERLAP'})`;
+
+            const grid = document.getElementById("levelsGrid");
+            grid.innerHTML = levels.map(l => {
+                let badgeColor = "bg-slate-800 text-slate-300";
+                if (l.level === 1) badgeColor = "bg-blue-500/20 text-blue-400 border border-blue-500/30";
+                else if (l.level === 2) badgeColor = "bg-purple-500/20 text-purple-400 border border-purple-500/30";
+                else if (l.level === 3) badgeColor = "bg-amber-500/20 text-amber-400 border border-amber-500/30";
+                else if (l.level === 4) badgeColor = "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
+                else if (l.level === 5) badgeColor = "bg-sky-500/20 text-sky-400 border border-sky-500/30";
+
+                return `
+                    <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${badgeColor}">Level ${l.level}</span>
+                                <span class="text-[10px] text-slate-500 font-mono">OK</span>
+                            </div>
+                            <h5 class="text-xs font-bold text-white mb-1.5">${l.name}</h5>
+                            <p class="text-[11px] text-slate-400 leading-normal mb-2">${l.description}</p>
+                        </div>
+                        <div class="bg-slate-900/90 p-2 rounded border border-slate-800/80 text-[10px] font-mono text-slate-300 overflow-x-auto max-h-24">
+                            ${Object.entries(l).filter(([k]) => !['level', 'name', 'description'].includes(k)).map(([k, v]) => `<div><span class="text-slate-500">${k}:</span> ${v}</div>`).join('')}
+                        </div>
+                    </div>
+                `;
+            }).join("");
+        }
+
+        async function executeVOPRFRegister() {
+            const phone = document.getElementById("inputPhone").value;
+            const partner_id = document.getElementById("inputPartner").value;
+            const role = document.getElementById("inputRole").value;
+            const county_code = document.getElementById("inputCounty").value;
+            const gender = document.getElementById("inputGender").value;
+            const purpose = document.getElementById("inputPurpose").value;
+
+            try {
+                const res = await fetch("/dev/voprf-register", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ phone, partner_id, role, county_code, gender, purpose })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    alert("Registration failed: " + (data.detail || JSON.stringify(data)));
+                    return;
+                }
+                lastRegisteredEntityId = data.entity_id;
+                renderExecutionLevels("Interactive VOPRF Registration", data.levels, data.entity_id, data.is_new);
+                refreshMetrics();
+            } catch (err) {
+                alert("Error executing registration: " + err.message);
+            }
+        }
+
+        async function executePEPCheck() {
+            if (!lastRegisteredEntityId) {
+                alert("Please register a farmer first to obtain an Entity ID for PEP testing.");
+                return;
+            }
+            const partner_id = document.getElementById("inputPartner").value;
+            const purpose = document.getElementById("inputPurpose").value;
+
+            try {
+                const res = await fetch("/dev/pep-check", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ entity_id: lastRegisteredEntityId, partner_id, purpose })
+                });
+                const data = await res.json();
+                alert(`Policy Enforcement Point (PEP) Evaluation:\n\nDecision: ${data.decision}\nReason: ${data.reason}\nEntity UUID: ${data.entity_id}\nPurpose: ${data.purpose}`);
+            } catch (err) {
+                alert("Error checking PEP: " + err.message);
+            }
+        }
+
+        async function executeConsentWithdraw() {
+            if (!lastRegisteredEntityId) {
+                alert("Please register a farmer first to obtain an Entity ID for withdrawal testing.");
+                return;
+            }
+            const partner_id = document.getElementById("inputPartner").value;
+
+            try {
+                const res = await fetch("/dev/consent-withdraw", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ entity_id: lastRegisteredEntityId, partner_id, reason: "Farmer USSD opt-out request" })
+                });
+                const data = await res.json();
+                alert(`Consent Withdrawn Successfully:\n\nEntity UUID: ${data.entity_id}\nPartner: ${data.partner_id}\nStatus: WITHDRAWN\nTimestamp: ${data.withdrawn_at}`);
+                refreshMetrics();
+            } catch (err) {
+                alert("Error withdrawing consent: " + err.message);
+            }
+        }
+
+        async function runScenario(scenarioName) {
+            try {
+                const res = await fetch(`/dev/scenario/${scenarioName}`, { method: "POST" });
+                const data = await res.json();
+                if (!res.ok) {
+                    alert("Scenario failed: " + (data.detail || JSON.stringify(data)));
+                    return;
+                }
+                const firstEid = data.levels.find(l => l.entity_id || l.resolved_entity_id);
+                const eid = firstEid ? (firstEid.entity_id || firstEid.resolved_entity_id) : "N/A";
+                lastRegisteredEntityId = eid;
+
+                renderExecutionLevels(data.title, data.levels, eid, scenarioName === "scenario_1_new_farmer");
+                refreshMetrics();
+
+                // Scroll smoothly to trace
+                document.getElementById("executionLevelContainer").scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            } catch (err) {
+                alert("Error running scenario: " + err.message);
+            }
+        }
+
+        // Initialize on load
         refreshMetrics();
     </script>
 </body>

@@ -99,6 +99,11 @@ def get_dashboard(
     sorted_weeks = sorted(weekly_buckets.keys())
     weekly_trend = {w: apply_k_anonymity(weekly_buckets[w]) for w in sorted_weeks}
 
+    total_entities = db.query(FarmerEntity).filter(FarmerEntity.status == "active").count()
+    total_associations = db.query(PartnerAssociation).filter(PartnerAssociation.status == "active").count()
+    active_consents = db.query(FarmerConsent).filter(FarmerConsent.status == "ACTIVE").count()
+    withdrawn_consents = db.query(FarmerConsent).filter(FarmerConsent.status == "WITHDRAWN").count()
+
     return templates.TemplateResponse(
         request=request,
         name="dashboard.html",
@@ -106,6 +111,10 @@ def get_dashboard(
             "total_registrations": total_registrations,
             "unique_farmers": unique_farmers,
             "overlap_rate": overlap_rate,
+            "total_entities": total_entities or unique_farmers,
+            "total_associations": total_associations or total_registrations,
+            "active_consents": active_consents,
+            "withdrawn_consents": withdrawn_consents,
             "gender_counts": gender_counts,
             "age_counts": age_counts,
             "county_counts": county_counts,

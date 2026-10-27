@@ -168,12 +168,20 @@
       <div class="metric-card">
         <h3>Unique Verified Farmers</h3>
         <div class="value" style="color: #059669;">{{ unique_farmers }}</div>
-        <div class="subtext">Distinct farmers de-duplicated across all partners</div>
+        <div class="subtext">Canonical RFC 9497 pseudonymous farmer entities</div>
       </div>
       <div class="metric-card">
         <h3>Cross-Partner Overlap Rate</h3>
         <div class="value" style="color: #0284c7;">{{ overlap_rate }}%</div>
         <div class="subtext">1 - (Unique Farmers / Total Active Registrations)</div>
+      </div>
+      <div class="metric-card">
+        <h3>Consent Registry Status</h3>
+        <div class="value" style="color: #10b981; font-size: 1.5rem;">
+          {{ active_consents }} <span style="font-size: 0.9rem; color: #64748b; font-weight: normal;">Active</span> &bull; 
+          <span style="color: #f43f5e;">{{ withdrawn_consents }}</span> <span style="font-size: 0.9rem; color: #64748b; font-weight: normal;">Withdrawn</span>
+        </div>
+        <div class="subtext">Enforced at Policy Enforcement Point (PEP) for SMS advisory</div>
       </div>
     </div>
 
