@@ -2,6 +2,14 @@ import hmac
 import hashlib
 from app.config import settings
 
+def length_prefix(s: str | bytes) -> bytes:
+    """Length-prefixed encoding LP(s) = uint16_be(byte_length) || bytes"""
+    if isinstance(s, str):
+        data = s.encode("utf-8")
+    else:
+        data = s
+    return len(data).to_bytes(2, byteorder="big") + data
+
 def rekey_hash(incoming_hash: str) -> str:
     """
     On receipt, the server re-keys the partner hash:
@@ -10,6 +18,21 @@ def rekey_hash(incoming_hash: str) -> str:
     """
     key = settings.SERVER_KEY.encode("utf-8")
     msg = incoming_hash.strip().lower().encode("utf-8")
+    return hmac.new(key, msg, hashlib.sha256).hexdigest()
+
+def compute_voprf_storage_digest(pilot_id: str, key_id: str, token_bytes: bytes) -> str:
+    """
+    RFC 9497 Registry Storage Digest Transformation:
+    D = HMAC-SHA256(SERVER_KEY, LP("oan-registry-v1") || LP(pilot_id) || LP(key_id) || T)
+    Protects against database-only leaks: raw token T is never persisted directly.
+    """
+    key = settings.SERVER_KEY.encode("utf-8")
+    msg = (
+        length_prefix("oan-registry-v1")
+        + length_prefix(pilot_id)
+        + length_prefix(key_id)
+        + token_bytes
+    )
     return hmac.new(key, msg, hashlib.sha256).hexdigest()
 
 def hash_api_key(api_key: str) -> str:

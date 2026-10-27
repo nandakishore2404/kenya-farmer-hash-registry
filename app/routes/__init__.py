@@ -3,6 +3,15 @@ from .partners import router as partners_router
 from .admin import router as admin_router
 from .dashboard import router as dashboard_router
 from .dev import router as dev_router
+from .evaluator import router as evaluator_router
+from .consent import router as consent_router
 
-__all__ = ["farmers_router", "partners_router", "admin_router", "dashboard_router", "dev_router"]
-
+__all__ = [
+    "farmers_router",
+    "partners_router",
+    "admin_router",
+    "dashboard_router",
+    "dev_router",
+    "evaluator_router",
+    "consent_router"
+]

@@ -4,7 +4,15 @@ from app.config import settings
 from app.database import engine, Base, SessionLocal
 from app.models import Partner
 from app.hashing import hash_api_key
-from app.routes import farmers_router, partners_router, admin_router, dashboard_router, dev_router
+from app.routes import (
+    farmers_router,
+    partners_router,
+    admin_router,
+    dashboard_router,
+    dev_router,
+    evaluator_router,
+    consent_router
+)
 
 TEST_PARTNERS = [
     {"partner_id": "test_partner_a", "name": "Test Partner A", "api_key": "test_partner_a_api_key_2026"},
@@ -70,6 +78,8 @@ app.include_router(partners_router)
 app.include_router(admin_router)
 app.include_router(dashboard_router)
 app.include_router(dev_router)
+app.include_router(evaluator_router)
+app.include_router(consent_router)
 
 @app.get("/health")
 def health_check():

@@ -2,15 +2,32 @@ import csv
 import io
 import re
 import email
+import base64
 from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, Request, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Farmer, PartnerLink, AuditLog, Partner, VALID_GENDERS, VALID_AGE_BANDS
-from app.schemas import FarmerRegisterRequest, StatusAcceptedResponse, UploadResponse
-from app.hashing import rekey_hash
+from app.models import (
+    Farmer,
+    PartnerLink,
+    AuditLog,
+    Partner,
+    FarmerEntity,
+    TokenAlias,
+    PartnerAssociation,
+    VALID_GENDERS,
+    VALID_AGE_BANDS
+)
+from app.schemas import (
+    FarmerRegisterRequest,
+    VOPRFFarmerRegisterRequest,
+    VOPRFFarmerRegisterResponse,
+    StatusAcceptedResponse,
+    UploadResponse
+)
+from app.hashing import rekey_hash, compute_voprf_storage_digest
 from app.auth import authenticate_partner
 
 router = APIRouter(prefix="/v1/farmers", tags=["farmers"])
@@ -35,7 +52,6 @@ def process_farmer_registration(
     onboarded_at: Optional[datetime] = None
 ) -> None:
     now = datetime.now(timezone.utc)
-    # Validate onboarded_at bounds if provided
     if onboarded_at:
         dt = onboarded_at if onboarded_at.tzinfo else onboarded_at.replace(tzinfo=timezone.utc)
         from datetime import timedelta
@@ -51,15 +67,62 @@ def process_farmer_registration(
         
     hash_key = rekey_hash(incoming_hash)
     
+    # Bridge to FarmerEntity and TokenAlias
+    entity_alias = db.query(TokenAlias).filter(
+        TokenAlias.scheme == "legacy_hmac",
+        TokenAlias.digest_d == hash_key
+    ).first()
+
+    if not entity_alias:
+        entity = FarmerEntity(created_at=now, updated_at=now, status="active")
+        db.add(entity)
+        db.flush()
+        entity_alias = TokenAlias(
+            entity_id=entity.entity_id,
+            pilot_id="kenya-pilot",
+            scheme="legacy_hmac",
+            key_id="v1",
+            digest_d=hash_key,
+            created_at=now
+        )
+        db.add(entity_alias)
+        db.add(PartnerAssociation(
+            entity_id=entity.entity_id,
+            partner_id=partner_id,
+            role="onboarder",
+            first_seen=ts,
+            last_seen=now,
+            status="active"
+        ))
+        resolved_entity_id = entity.entity_id
+    else:
+        resolved_entity_id = entity_alias.entity_id
+        assoc = db.query(PartnerAssociation).filter(
+            PartnerAssociation.entity_id == resolved_entity_id,
+            PartnerAssociation.partner_id == partner_id
+        ).first()
+        if not assoc:
+            db.add(PartnerAssociation(
+                entity_id=resolved_entity_id,
+                partner_id=partner_id,
+                role="contributor",
+                first_seen=ts,
+                last_seen=now,
+                status="active"
+            ))
+        else:
+            assoc.last_seen = now
+            assoc.status = "active"
+
     farmer = db.query(Farmer).filter(Farmer.hash_key == hash_key).first()
     
     if not farmer:
-        # First partner onboarding this farmer
         new_farmer = Farmer(
             hash_key=hash_key,
             gender=gender,
             age_band=age_band,
             county_code=county_code,
+            entity_id=resolved_entity_id,
             created_at=now,
             updated_at=now
         )
@@ -79,11 +142,11 @@ def process_farmer_registration(
             action="register_first",
             partner_id=partner_id,
             farmer_id=new_farmer.id,
+            entity_id=resolved_entity_id,
             at=now
         )
         db.add(audit)
     else:
-        # Farmer already known in registry
         link = db.query(PartnerLink).filter(
             PartnerLink.farmer_id == farmer.id,
             PartnerLink.partner_id == partner_id
@@ -91,16 +154,15 @@ def process_farmer_registration(
         
         if link:
             if link.status == "active":
-                # Idempotent re-send: no change
                 audit = AuditLog(
                     action="register_duplicate_same_partner",
                     partner_id=partner_id,
                     farmer_id=farmer.id,
+                    entity_id=resolved_entity_id,
                     at=now
                 )
                 db.add(audit)
             else:
-                # Previously removed, now reactivated
                 link.status = "active"
                 link.linked_at = ts
                 link.received_at = now
@@ -108,11 +170,11 @@ def process_farmer_registration(
                     action="register_reactivate_partner",
                     partner_id=partner_id,
                     farmer_id=farmer.id,
+                    entity_id=resolved_entity_id,
                     at=now
                 )
                 db.add(audit)
         else:
-            # New partner linking to existing farmer
             new_link = PartnerLink(
                 farmer_id=farmer.id,
                 partner_id=partner_id,
@@ -125,10 +187,10 @@ def process_farmer_registration(
                 action="register_link_existing",
                 partner_id=partner_id,
                 farmer_id=farmer.id,
+                entity_id=resolved_entity_id,
                 at=now
             )
             db.add(audit)
-
 
 @router.post("", response_model=StatusAcceptedResponse)
 def register_farmer(
@@ -137,7 +199,7 @@ def register_farmer(
     db: Session = Depends(get_db)
 ):
     """
-    Registers or links a farmer using incoming partner hash.
+    Registers or links a farmer using incoming partner hash (Legacy HMAC).
     ALWAYS returns exactly {"status":"accepted"} with HTTP 200 for valid requests.
     """
     process_farmer_registration(
@@ -152,6 +214,110 @@ def register_farmer(
     db.commit()
     return StatusAcceptedResponse(status="accepted")
 
+@router.post("/token", response_model=VOPRFFarmerRegisterResponse)
+def register_farmer_voprf_token(
+    payload: VOPRFFarmerRegisterRequest,
+    partner: Partner = Depends(authenticate_partner),
+    db: Session = Depends(get_db)
+):
+    """
+    Canonical VOPRF Token Registration:
+    Accepts 64-byte RFC 9497 finalized Token T.
+    Computes storage digest D = HMAC-SHA256(SERVER_KEY, LP("oan-registry-v1") || LP(pilot_id) || LP(key_id) || T)
+    Deduplicates across all partners and returns the stable entity_id.
+    """
+    try:
+        raw_token = base64.b64decode(payload.token_b64)
+        if len(raw_token) != 64:
+            raise ValueError("Token must be exactly 64 bytes")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid base64 token format")
+
+    now = datetime.now(timezone.utc)
+    digest_d = compute_voprf_storage_digest(payload.pilot_id, payload.key_id, raw_token)
+
+    # 1. Check existing alias
+    alias = db.query(TokenAlias).filter(
+        TokenAlias.pilot_id == payload.pilot_id,
+        TokenAlias.key_id == payload.key_id,
+        TokenAlias.digest_d == digest_d
+    ).first()
+
+    is_new = False
+    if not alias:
+        # Create brand new FarmerEntity
+        entity = FarmerEntity(created_at=now, updated_at=now, status="active")
+        db.add(entity)
+        db.flush()
+
+        alias = TokenAlias(
+            entity_id=entity.entity_id,
+            pilot_id=payload.pilot_id,
+            scheme="voprf_ristretto255",
+            key_id=payload.key_id,
+            digest_d=digest_d,
+            created_at=now
+        )
+        db.add(alias)
+
+        assoc = PartnerAssociation(
+            entity_id=entity.entity_id,
+            partner_id=partner.partner_id,
+            role=payload.role or "onboarder",
+            first_seen=now,
+            last_seen=now,
+            status="active"
+        )
+        db.add(assoc)
+
+        db.add(AuditLog(
+            action="voprf_register_first",
+            partner_id=partner.partner_id,
+            entity_id=entity.entity_id,
+            at=now
+        ))
+        is_new = True
+        resolved_id = entity.entity_id
+    else:
+        resolved_id = alias.entity_id
+        assoc = db.query(PartnerAssociation).filter(
+            PartnerAssociation.entity_id == resolved_id,
+            PartnerAssociation.partner_id == partner.partner_id
+        ).first()
+
+        if not assoc:
+            assoc = PartnerAssociation(
+                entity_id=resolved_id,
+                partner_id=partner.partner_id,
+                role=payload.role or "contributor",
+                first_seen=now,
+                last_seen=now,
+                status="active"
+            )
+            db.add(assoc)
+            db.add(AuditLog(
+                action="voprf_register_overlap",
+                partner_id=partner.partner_id,
+                entity_id=resolved_id,
+                at=now
+            ))
+        else:
+            assoc.last_seen = now
+            assoc.status = "active"
+            db.add(AuditLog(
+                action="voprf_register_idempotent",
+                partner_id=partner.partner_id,
+                entity_id=resolved_id,
+                at=now
+            ))
+
+    db.commit()
+    return VOPRFFarmerRegisterResponse(
+        status="accepted",
+        entity_id=resolved_id,
+        is_new_entity=is_new,
+        partner_association_status=assoc.status
+    )
 
 @router.post(":upload", response_model=UploadResponse)
 async def upload_farmers_csv(
@@ -159,11 +325,6 @@ async def upload_farmers_csv(
     partner: Partner = Depends(authenticate_partner),
     db: Session = Depends(get_db)
 ):
-    """
-    Accepts multipart CSV or raw CSV (hash,gender,age_band,county_code,onboarded_at) for backfill.
-    Executes identical idempotent logic per row.
-    Returns {"rows_received": n, "rows_rejected": m}.
-    """
     body = await request.body()
     content_type = request.headers.get("content-type", "")
     
@@ -197,15 +358,12 @@ async def upload_farmers_csv(
     for row in reader:
         if not row or all(c.strip() == "" for c in row):
             continue
-        
-        # Check for header row
         if first_row and any(col.strip().lower() in ("hash", "gender", "age_band", "county_code") for col in row):
             first_row = False
             continue
         first_row = False
         
         rows_received += 1
-        
         if len(row) < 4:
             rows_rejected += 1
             continue
@@ -216,7 +374,6 @@ async def upload_farmers_csv(
         row_county = row[3].strip()
         row_onboarded_at = row[4].strip() if len(row) > 4 else None
         
-        # Validate format
         if not HEX_64_REGEX.match(row_hash):
             rows_rejected += 1
             continue
@@ -239,9 +396,7 @@ async def upload_farmers_csv(
         else:
             dt = None
         
-        # Check in-file repeat
         if row_hash in seen_in_batch:
-            # Repeat inside same file: count as accepted resend
             rows_accepted += 1
             continue
         
@@ -270,19 +425,12 @@ async def upload_farmers_csv(
         rows_rejected=rows_rejected
     )
 
-
 @router.delete("/{incoming_hash}", response_model=StatusAcceptedResponse)
-def withdraw_consent(
+def withdraw_consent_legacy(
     incoming_hash: str,
     partner: Partner = Depends(authenticate_partner),
     db: Session = Depends(get_db)
 ):
-    """
-    Consent withdrawn by partner:
-    - Mark this partner's link 'removed'
-    - Delete the farmer if no active links remain across any partners
-    - Always returns {"status":"accepted"} with HTTP 200
-    """
     if not HEX_64_REGEX.match(incoming_hash):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -303,14 +451,12 @@ def withdraw_consent(
             link.status = "removed"
             db.flush()
             
-            # Check remaining active links across ALL partners
             active_links_count = db.query(PartnerLink).filter(
                 PartnerLink.farmer_id == farmer.id,
                 PartnerLink.status == "active"
             ).count()
             
             if active_links_count == 0:
-                # No other partner has an active link to this farmer -> delete farmer
                 db.delete(farmer)
             
             audit = AuditLog(

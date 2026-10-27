@@ -35,6 +35,23 @@ class FarmerRegisterRequest(BaseModel):
             
         return v
 
+class VOPRFFarmerRegisterRequest(BaseModel):
+    pilot_id: str = Field("kenya-pilot", description="Pilot identifier")
+    key_id: str = Field("ke-pilot-v1", description="Evaluator Key ID")
+    token_b64: str = Field(..., description="Base64-encoded 64-byte finalized VOPRF token T")
+    gender: Optional[GenderType] = "U"
+    age_band: Optional[AgeBandType] = "U"
+    county_code: Optional[str] = "047"
+    role: Optional[Literal["onboarder", "primary", "contributor"]] = "contributor"
+    idempotency_key: str = Field(..., description="Unique client idempotency UUID")
+    onboarded_at: Optional[datetime] = None
+
+class VOPRFFarmerRegisterResponse(BaseModel):
+    status: Literal["accepted"] = "accepted"
+    entity_id: str
+    is_new_entity: bool
+    partner_association_status: str
+
 class StatusAcceptedResponse(BaseModel):
     status: Literal["accepted"] = "accepted"
 

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app.database import get_db
-from app.models import Farmer, PartnerLink, Partner
+from app.models import Farmer, PartnerLink, Partner, FarmerEntity, PartnerAssociation, FarmerConsent
 from app.config import settings
 
 router = APIRouter(tags=["dashboard"])
@@ -31,10 +31,6 @@ def authenticate_dashboard(credentials: HTTPBasicCredentials = Depends(security)
     return credentials.username
 
 def apply_k_anonymity(count: int, threshold: int = settings.SUPPRESSION_THRESHOLD) -> dict:
-    """
-    Suppresses any count under 5 to protect individual privacy.
-    Distinguishes true 0 from values 1..4 which are marked as '<5'.
-    """
     if 0 < count < threshold:
         return {"value": 0, "display": "<5", "suppressed": True}
     return {"value": count, "display": str(count), "suppressed": False}
@@ -45,18 +41,13 @@ def get_dashboard(
     _auth: str = Depends(authenticate_dashboard),
     db: Session = Depends(get_db)
 ):
-    # 1. Total registrations (all active partner links)
     total_registrations = db.query(PartnerLink).filter(PartnerLink.status == "active").count()
-    
-    # 2. Unique farmers (active farmers with at least one active partner link)
     unique_farmers = db.query(Farmer).join(PartnerLink).filter(PartnerLink.status == "active").distinct().count()
     
-    # 3. Overlap rate = 1 - (unique / registrations)
     overlap_rate = 0.0
     if total_registrations > 0:
         overlap_rate = round((1.0 - (unique_farmers / total_registrations)) * 100.0, 2)
         
-    # 4. Gender distribution
     gender_rows = db.query(Farmer.gender, func.count(Farmer.id))\
         .join(PartnerLink).filter(PartnerLink.status == "active")\
         .group_by(Farmer.gender).all()
@@ -66,7 +57,6 @@ def get_dashboard(
         label = {"F": "Female (F)", "M": "Male (M)", "U": "Unknown (U)"}.get(g, g)
         gender_counts[label] = apply_k_anonymity(cnt)
 
-    # 5. Age band distribution
     age_bands_order = ['<18', '18-24', '25-34', '35-44', '45-54', '55-64', '65+', 'U']
     age_rows = db.query(Farmer.age_band, func.count(Farmer.id))\
         .join(PartnerLink).filter(PartnerLink.status == "active")\
@@ -74,17 +64,14 @@ def get_dashboard(
     age_dict = dict(age_rows)
     age_counts = {band: apply_k_anonymity(age_dict.get(band, 0)) for band in age_bands_order}
 
-    # 6. County distribution
     county_rows = db.query(Farmer.county_code, func.count(Farmer.id))\
         .join(PartnerLink).filter(PartnerLink.status == "active")\
         .group_by(Farmer.county_code).order_by(func.count(Farmer.id).desc()).all()
     county_counts = {c: apply_k_anonymity(cnt) for c, cnt in county_rows}
 
-    # 7. First-to-onboard credit per partner
     all_partners = db.query(Partner.partner_id, Partner.name).all()
     partner_names = {p.partner_id: p.name for p in all_partners}
     
-    # For each active farmer, find the earliest partner link
     earliest_links = db.query(
         PartnerLink.farmer_id,
         PartnerLink.partner_id,
@@ -102,12 +89,10 @@ def get_dashboard(
     for pid, name in partner_names.items():
         first_credit[f"{name} ({pid})"] = apply_k_anonymity(first_onboard_counts.get(pid, 0))
 
-    # 8. Weekly trend
     farmers = db.query(Farmer.created_at).all()
     weekly_buckets = defaultdict(int)
     for f in farmers:
         if f.created_at:
-            # Format as YYYY-WW
             week_key = f.created_at.strftime("%Y-W%W")
             weekly_buckets[week_key] += 1
             
@@ -129,3 +114,33 @@ def get_dashboard(
             "threshold": settings.SUPPRESSION_THRESHOLD
         }
     )
+
+@router.get("/v1/telemetry/dpi-metrics")
+def get_dpi_telemetry_metrics(
+    _auth: str = Depends(authenticate_dashboard),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns live verified DPI Deduplication & Consent Telemetry.
+    """
+    total_registrations = db.query(PartnerAssociation).filter(PartnerAssociation.status == "active").count()
+    dedup_identities = db.query(FarmerEntity).filter(FarmerEntity.status == "active").count()
+
+    if total_registrations == 0:
+        total_registrations = db.query(PartnerLink).filter(PartnerLink.status == "active").count()
+        dedup_identities = db.query(Farmer).join(PartnerLink).filter(PartnerLink.status == "active").distinct().count()
+
+    overlap_count = max(0, total_registrations - dedup_identities)
+    overlap_rate = round((overlap_count / total_registrations * 100.0), 2) if total_registrations > 0 else 0.0
+
+    active_consents = db.query(FarmerConsent).filter(FarmerConsent.status == "ACTIVE").count()
+    withdrawn_consents = db.query(FarmerConsent).filter(FarmerConsent.status == "WITHDRAWN").count()
+
+    return {
+        "total_registrations_received": total_registrations,
+        "deduplicated_farmer_identities": dedup_identities,
+        "cross_provider_overlap_records": overlap_count,
+        "cross_provider_overlap_rate_pct": overlap_rate,
+        "consent_active_count": active_consents,
+        "consent_withdrawn_count": withdrawn_consents
+    }
