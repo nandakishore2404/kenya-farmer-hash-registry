@@ -17,6 +17,7 @@ import json
 import time
 import base64
 import uuid
+from datetime import datetime, timezone
 from typing import Dict, List, Any
 
 # Ensure project root is in sys.path
@@ -156,6 +157,33 @@ def run_voprf_simulation(total_farmers: int = 3000):
             overlap_count += 1
         entity_map[ind_id] = res.entity_id
 
+        # Bridge to legacy Farmer & PartnerLink models for Dashboard charts
+        farmer_rec = db.query(Farmer).filter(Farmer.entity_id == res.entity_id).first()
+        if not farmer_rec:
+            farmer_rec = Farmer(
+                entity_id=res.entity_id,
+                hash_key=token_b64[:32],
+                gender=reg["gender"],
+                age_band=reg["age_band"],
+                county_code=reg["county_code"],
+                created_at=datetime.now(timezone.utc)
+            )
+            db.add(farmer_rec)
+            db.flush()
+        
+        p_link = db.query(PartnerLink).filter(
+            PartnerLink.farmer_id == farmer_rec.id,
+            PartnerLink.partner_id == partner_obj.partner_id
+        ).first()
+        if not p_link:
+            db.add(PartnerLink(
+                farmer_id=farmer_rec.id,
+                partner_id=partner_obj.partner_id,
+                status="active",
+                received_at=datetime.now(timezone.utc)
+            ))
+            db.flush()
+
         if idx % 500 == 0 or idx == total_events:
             print(f"      Processed {idx}/{total_events} registrations ({overlap_count} overlaps detected)...")
 
@@ -173,26 +201,34 @@ def run_voprf_simulation(total_farmers: int = 3000):
         if ind_id in entity_map:
             withdrawn_entity_ids.add(entity_map[ind_id])
 
-    # Capture consent for all entities
-    all_entities = db.query(FarmerEntity).all()
-    for ent in all_entities:
-        cap_req = ConsentCaptureRequest(
-            entity_id=ent.entity_id,
-            purpose="ADVISORY",
-            channel="WHITE_LABEL_APP"
-        )
-        capture_consent(cap_req, partner=partners["test_partner_a"], db=db)
+    # Capture consent for all entities under their active associated partners
+    all_associations = db.query(PartnerAssociation).filter(PartnerAssociation.status == "active").all()
+    for assoc in all_associations:
+        p_obj = partners.get(assoc.partner_id)
+        if p_obj:
+            cap_req = ConsentCaptureRequest(
+                entity_id=assoc.entity_id,
+                purpose="ADVISORY",
+                channel="WHITE_LABEL_APP"
+            )
+            capture_consent(cap_req, partner=p_obj, db=db)
 
-    print(f"      Active consent captured for all {len(all_entities)} unique farmer entities.")
+    print(f"      Active consent captured for all {len(all_associations)} partner associations.")
 
     # Execute planned 1% withdrawals
     for ent_id in withdrawn_entity_ids:
-        with_req = ConsentWithdrawRequest(
-            entity_id=ent_id,
-            purpose="ADVISORY",
-            reason="User opted out via USSD"
-        )
-        withdraw_consent(with_req, partner=partners["test_partner_a"], db=db)
+        # Find first active association for this entity
+        target_assoc = db.query(PartnerAssociation).filter(
+            PartnerAssociation.entity_id == ent_id,
+            PartnerAssociation.status == "active"
+        ).first()
+        if target_assoc and target_assoc.partner_id in partners:
+            with_req = ConsentWithdrawRequest(
+                entity_id=ent_id,
+                purpose="ADVISORY",
+                reason="User opted out via USSD"
+            )
+            withdraw_consent(with_req, partner=partners[target_assoc.partner_id], db=db)
 
     print(f"      Executed {len(withdrawn_entity_ids)} planned consent withdrawals.")
 
@@ -200,16 +236,18 @@ def run_voprf_simulation(total_farmers: int = 3000):
     print(f"\n[4/5] Verifying Downstream Policy Enforcement Point (PEP)...")
     blocked_count = 0
     allowed_count = 0
-    for ent in all_entities:
-        chk = check_consent_policy_enforcement_point(
-            ent.entity_id, "ADVISORY", partner=partners["test_partner_a"], db=db
-        )
-        if chk.allowed:
-            allowed_count += 1
-        else:
-            blocked_count += 1
+    for assoc in all_associations:
+        p_obj = partners.get(assoc.partner_id)
+        if p_obj:
+            chk = check_consent_policy_enforcement_point(
+                assoc.entity_id, "ADVISORY", partner=p_obj, db=db
+            )
+            if chk.allowed:
+                allowed_count += 1
+            else:
+                blocked_count += 1
 
-    assert blocked_count == len(withdrawn_entity_ids), "PEP failed to block all withdrawn farmers!"
+    assert blocked_count == len(withdrawn_entity_ids), f"PEP blocked {blocked_count} vs {len(withdrawn_entity_ids)} expected!"
     print(f"      PEP Enforcement: {allowed_count} messages ALLOWED, {blocked_count} messages BLOCKED.")
 
     # Step 6: Generate Ground Truth vs Telemetry Verification

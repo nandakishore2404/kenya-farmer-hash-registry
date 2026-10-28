@@ -627,6 +627,12 @@ add_body("   set EVALUATOR_SECRET_K=e8c7b6a5d4c3b2a1908f7e6d5c4b3a2918273645e5d4
 
 # Save document
 output_path = os.path.join(ROOT, "OAN_Kenya_Farmer_Identity_Deduplication_Consent_Architecture_Final_Client_Ready.docx")
-doc.save(output_path)
-print(f"Document successfully created: {output_path}")
-print(f"File size: {os.path.getsize(output_path)} bytes")
+try:
+    doc.save(output_path)
+    print(f"Document successfully created: {output_path}")
+    print(f"File size: {os.path.getsize(output_path)} bytes")
+except PermissionError:
+    fallback_path = os.path.join(ROOT, "OAN_Kenya_Farmer_Identity_Deduplication_Consent_Architecture_Final_Client_Ready_Updated.docx")
+    doc.save(fallback_path)
+    print(f"Primary file locked by Word; document saved to fallback: {fallback_path}")
+    print(f"File size: {os.path.getsize(fallback_path)} bytes")

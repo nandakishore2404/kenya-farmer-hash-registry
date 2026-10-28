@@ -46,6 +46,20 @@ def get_dashboard(
 ):
     total_registrations = db.query(PartnerLink).filter(PartnerLink.status == "active").count()
     unique_farmers = db.query(Farmer).join(PartnerLink).filter(PartnerLink.status == "active").distinct().count()
+
+    total_entities = db.query(FarmerEntity).filter(FarmerEntity.status == "active").count()
+    total_associations = (
+        db.query(PartnerAssociation)
+        .join(FarmerEntity, PartnerAssociation.entity_id == FarmerEntity.entity_id)
+        .filter(PartnerAssociation.status == "active", FarmerEntity.status == "active")
+        .count()
+    )
+    active_consents = db.query(FarmerConsent).filter(FarmerConsent.status == "ACTIVE").count()
+    withdrawn_consents = db.query(FarmerConsent).filter(FarmerConsent.status == "WITHDRAWN").count()
+
+    if total_associations > 0:
+        total_registrations = total_associations
+        unique_farmers = total_entities
     
     overlap_rate = 0.0
     if total_registrations > 0:
