@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.auth import authenticate_partner
-from app.models import FarmerEntity, FarmerConsent, AuditLog, Partner
+from app.models import FarmerEntity, FarmerConsent, AuditLog, Partner, PartnerAssociation
 
 router = APIRouter(prefix="/v1/consent", tags=["consent"])
 
@@ -128,8 +128,22 @@ def check_consent_policy_enforcement_point(
     Requires partner authentication (or internal service credentials).
     Returns: ALLOW (true) if ACTIVE, BLOCK (false) if WITHDRAWN or missing.
     """
+    # 1. Partner Authorization: Verify caller is associated with this entity
+    assoc = db.query(PartnerAssociation).filter(
+        PartnerAssociation.entity_id == entity_id,
+        PartnerAssociation.partner_id == partner.partner_id,
+        PartnerAssociation.status == "active"
+    ).first()
+    if not assoc:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Forbidden: Partner '{partner.partner_id}' is not authorized to access consent for entity '{entity_id}'."
+        )
+
+    # 2. Scope consent lookup to calling partner
     consent = db.query(FarmerConsent).filter(
         FarmerConsent.entity_id == entity_id,
+        FarmerConsent.partner_id == partner.partner_id,
         FarmerConsent.purpose == purpose
     ).first()
 
@@ -155,8 +169,22 @@ def get_consent_status(
     partner: Partner = Depends(authenticate_partner),
     db: Session = Depends(get_db)
 ):
+    # 1. Partner Authorization: Verify caller is associated with this entity
+    assoc = db.query(PartnerAssociation).filter(
+        PartnerAssociation.entity_id == entity_id,
+        PartnerAssociation.partner_id == partner.partner_id,
+        PartnerAssociation.status == "active"
+    ).first()
+    if not assoc:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Forbidden: Partner '{partner.partner_id}' is not authorized to access consent for entity '{entity_id}'."
+        )
+
+    # 2. Scope consent lookup to calling partner
     consent = db.query(FarmerConsent).filter(
         FarmerConsent.entity_id == entity_id,
+        FarmerConsent.partner_id == partner.partner_id,
         FarmerConsent.purpose == purpose
     ).first()
     if not consent:

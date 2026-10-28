@@ -100,7 +100,12 @@ def get_dashboard(
     weekly_trend = {w: apply_k_anonymity(weekly_buckets[w]) for w in sorted_weeks}
 
     total_entities = db.query(FarmerEntity).filter(FarmerEntity.status == "active").count()
-    total_associations = db.query(PartnerAssociation).filter(PartnerAssociation.status == "active").count()
+    total_associations = (
+        db.query(PartnerAssociation)
+        .join(FarmerEntity, PartnerAssociation.entity_id == FarmerEntity.entity_id)
+        .filter(PartnerAssociation.status == "active", FarmerEntity.status == "active")
+        .count()
+    )
     active_consents = db.query(FarmerConsent).filter(FarmerConsent.status == "ACTIVE").count()
     withdrawn_consents = db.query(FarmerConsent).filter(FarmerConsent.status == "WITHDRAWN").count()
 
@@ -132,7 +137,12 @@ def get_dpi_telemetry_metrics(
     """
     Returns live verified DPI Deduplication & Consent Telemetry.
     """
-    total_registrations = db.query(PartnerAssociation).filter(PartnerAssociation.status == "active").count()
+    total_registrations = (
+        db.query(PartnerAssociation)
+        .join(FarmerEntity, PartnerAssociation.entity_id == FarmerEntity.entity_id)
+        .filter(PartnerAssociation.status == "active", FarmerEntity.status == "active")
+        .count()
+    )
     dedup_identities = db.query(FarmerEntity).filter(FarmerEntity.status == "active").count()
 
     if total_registrations == 0:

@@ -1,16 +1,18 @@
 """
 VOPRF Independent Evaluator Router (RFC 9497)
-- Key custody isolated with dedicated key scalar k
+- Key custody isolated with dedicated key scalar k loaded from secure runtime store / HSM
 - Provides /v1/evaluations and /v1/evaluator/public-key
 - Rate limiting quotas, batch bound verification, and curve point validation
-- Key Epoch v2: Fresh key after deprecating compromised v1 mapping
+- Key Epoch v3: Rotated secret scalar loaded from environment / CloudHSM / Vault transit
 """
 
+import os
 import base64
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Header, Depends, status
 from pydantic import BaseModel, Field
 
+from app.config import settings
 from app.crypto.voprf import (
     VOPRFEngine,
     GroupElement,
@@ -23,11 +25,36 @@ from app.models import Partner
 
 router = APIRouter(prefix="/v1", tags=["evaluator"])
 
-# Evaluator Key Epoch v2: Fresh Evaluator Key after deprecation of compromised v1 key
-# (in production, held in AWS CloudHSM / HashiCorp Vault transit engine)
-EVALUATOR_KEY_ID = "ke-pilot-v2"
-EVALUATOR_SECRET_K = 0x5D8A9F1B2C3E4D5A6B7C8D9E0F1A2B3C4D5E6F7A8B9C0D1E2F3A4B5C6D7E8F91 % N_ORDER
-EVALUATOR_PUBLIC_KEY = GroupElement(point_mul(EVALUATOR_SECRET_K, GENERATOR_G.pt))
+def load_evaluator_key() -> tuple[str, int, GroupElement]:
+    """
+    Loads active Evaluator key epoch and secret scalar k from secure runtime environment.
+    Refuses startup if k is absent or invalid (no literal fallback, no default).
+    In production SAFIC deployments, k resides in AWS CloudHSM or HashiCorp Vault transit engine.
+    """
+    key_id = getattr(settings, "EVALUATOR_KEY_ID", "ke-pilot-v3")
+    raw_k = getattr(settings, "EVALUATOR_SECRET_K", None) or os.environ.get("EVALUATOR_SECRET_K")
+    if not raw_k or not str(raw_k).strip():
+        raise RuntimeError(
+            "FATAL: EVALUATOR_SECRET_K is not set. The VOPRF Evaluator secret key must be "
+            "provided via secure runtime environment or CloudHSM / Vault transit. "
+            "Startup aborted to prevent unauthenticated/compromised operation."
+        )
+    clean_k = str(raw_k).strip()
+    try:
+        if clean_k.startswith("0x") or clean_k.startswith("0X"):
+            k_val = int(clean_k, 16) % N_ORDER
+        else:
+            k_val = int(clean_k, 16) % N_ORDER
+    except ValueError:
+        k_val = int(clean_k) % N_ORDER
+
+    if k_val == 0:
+        raise RuntimeError("FATAL: EVALUATOR_SECRET_K cannot be zero modulo curve order.")
+
+    pub_pt = point_mul(k_val, GENERATOR_G.pt)
+    return key_id, k_val, GroupElement(pub_pt)
+
+EVALUATOR_KEY_ID, EVALUATOR_SECRET_K, EVALUATOR_PUBLIC_KEY = load_evaluator_key()
 
 # In-memory quota tracker
 PARTNER_QUOTAS = {}
@@ -53,7 +80,7 @@ def get_evaluator_public_key():
         "public_key": base64.b64encode(EVALUATOR_PUBLIC_KEY.to_bytes()).decode("utf-8"),
         "curve": "secp256k1-SHA512",
         "status": "active",
-        "epoch": "v2"
+        "epoch": "v3"
     }
 
 @router.post("/evaluations", response_model=EvaluatedElementResponse)

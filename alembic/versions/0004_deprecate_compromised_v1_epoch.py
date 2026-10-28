@@ -8,7 +8,9 @@ Migration Decision:
 Addresses critical security defect in legacy scalar-multiplication hash_to_group.
 Flags all TokenAlias records issued under key epochs 'v1' and 'ke-pilot-v1' as
 'compromised_v1_legacy', marks affected FarmerEntity rows as 'quarantined_v1_epoch',
-and establishes 'ke-pilot-v2' as the authoritative key epoch.
+and establishes 'ke-pilot-v3' as the authoritative key epoch.
+Scopes VOPRF alias updates strictly by scheme to prevent conflation with legacy-HMAC.
+Quarantines partner_association rows for quarantined entities to preserve telemetry reconciliation.
 """
 from alembic import op
 import sqlalchemy as sa
@@ -24,13 +26,23 @@ def upgrade() -> None:
         'token_alias',
         sa.Column('status', sa.String(length=30), nullable=False, server_default='active')
     )
-    
-    # 2. Flag compromised legacy aliases as non-authoritative
+
+    # 2. Namespace legacy HMAC keys to prevent conflation with VOPRF epochs
     op.execute(
-        "UPDATE token_alias SET status = 'compromised_v1_legacy' WHERE key_id IN ('v1', 'ke-pilot-v1')"
+        "UPDATE token_alias SET key_id = 'legacy-hmac-v1' WHERE scheme = 'legacy_hmac' AND key_id = 'v1'"
     )
     
-    # 3. Quarantine entities tied exclusively to compromised v1 aliases
+    # 3. Flag compromised VOPRF aliases as non-authoritative (scoped strictly to VOPRF schemes)
+    op.execute(
+        """
+        UPDATE token_alias 
+        SET status = 'compromised_v1_legacy' 
+        WHERE scheme IN ('voprf_ristretto255', 'voprf_secp256k1') 
+          AND key_id IN ('v1', 'ke-pilot-v1', 'ke-pilot-v2')
+        """
+    )
+    
+    # 4. Quarantine entities tied exclusively to compromised VOPRF aliases
     op.execute(
         """
         UPDATE farmer_entity 
@@ -44,8 +56,25 @@ def upgrade() -> None:
         """
     )
 
+    # 5. Quarantine partner associations for quarantined entities to preserve telemetry fidelity
+    op.execute(
+        """
+        UPDATE partner_association
+        SET status = 'quarantined_v1_epoch'
+        WHERE entity_id IN (
+            SELECT entity_id FROM farmer_entity WHERE status = 'quarantined_v1_epoch'
+        )
+        """
+    )
+
 def downgrade() -> None:
     op.execute(
+        "UPDATE partner_association SET status = 'active' WHERE status = 'quarantined_v1_epoch'"
+    )
+    op.execute(
         "UPDATE farmer_entity SET status = 'active' WHERE status = 'quarantined_v1_epoch'"
+    )
+    op.execute(
+        "UPDATE token_alias SET key_id = 'v1' WHERE scheme = 'legacy_hmac' AND key_id = 'legacy-hmac-v1'"
     )
     op.drop_column('token_alias', 'status')

@@ -30,6 +30,7 @@ from prototype_voprf.registry.models import (
 
 # Registry Storage Secret Key (Isolated from Evaluator Key k)
 REGISTRY_STORAGE_KEY = b"OAN-REGISTRY-STORAGE-SECRET-KEY-2026-PILOT"
+KEY_ID = "ke-pilot-v3"
 
 # In-memory SQLite for prototype demonstration
 engine = create_engine("sqlite:///./prototype_registry.db", connect_args={"check_same_thread": False})
@@ -78,7 +79,7 @@ def authenticate_partner(authorization: Optional[str] = Header(None)) -> str:
 # Schemas
 class RegistrationRequest(BaseModel):
     pilot_id: str = "kenya-pilot"
-    key_id: str = "ke-pilot-v2"
+    key_id: str = "ke-pilot-v3"
     token_b64: str = Field(..., description="Base64-encoded 64-byte finalized VOPRF token T")
     idempotency_key: str = Field(..., description="Unique UUID per client submission")
     role: Optional[Literal["onboarder", "primary", "contributor"]] = "contributor"
@@ -128,13 +129,20 @@ def register_farmer(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid base64 token format")
 
+    if req.key_id != KEY_ID:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid or deprecated key_id '{req.key_id}'. Registrations must use active Evaluator key epoch '{KEY_ID}'."
+        )
+
     digest_d = compute_storage_digest(req.pilot_id, req.key_id, raw_token)
 
-    # 1. Look up existing alias
+    # 1. Look up existing alias (strictly active only)
     existing_alias = db.query(TokenAlias).filter(
         TokenAlias.pilot_id == req.pilot_id,
         TokenAlias.key_id == req.key_id,
-        TokenAlias.digest_d == digest_d
+        TokenAlias.digest_d == digest_d,
+        TokenAlias.status == "active"
     ).first()
 
     now = datetime.now(timezone.utc)
@@ -317,8 +325,22 @@ def check_consent_enforcement_point(
     Requires caller authentication.
     Returns: ALLOW (true) if ACTIVE, BLOCK (false) if WITHDRAWN or missing.
     """
+    # 1. Partner Authorization: Verify caller is associated with this entity
+    assoc = db.query(PartnerAssociation).filter(
+        PartnerAssociation.entity_id == entity_id,
+        PartnerAssociation.partner_id == partner_name,
+        PartnerAssociation.status == "active"
+    ).first()
+    if not assoc:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Forbidden: Partner '{partner_name}' is not authorized to access consent for entity '{entity_id}'"
+        )
+
+    # 2. Scope consent lookup to calling partner
     consent = db.query(FarmerConsent).filter(
         FarmerConsent.entity_id == entity_id,
+        FarmerConsent.partner_id == partner_name,
         FarmerConsent.purpose == purpose
     ).first()
 
@@ -347,20 +369,26 @@ def get_dpi_telemetry(db: Session = Depends(get_db)):
     - Active vs Withdrawn consent totals
     - Overlap distribution across partners
     """
-    total_registrations = db.query(PartnerAssociation).filter(PartnerAssociation.status == "active").count()
+    total_registrations = (
+        db.query(PartnerAssociation)
+        .join(FarmerEntity, PartnerAssociation.entity_id == FarmerEntity.entity_id)
+        .filter(PartnerAssociation.status == "active", FarmerEntity.status == "active")
+        .count()
+    )
     deduplicated_identities = db.query(FarmerEntity).filter(FarmerEntity.status == "active").count()
 
     overlap_count = max(0, total_registrations - deduplicated_identities)
     overlap_rate = round((overlap_count / total_registrations * 100.0), 2) if total_registrations > 0 else 0.0
 
     # Multi-provider farmers (associated with >1 partner)
-    shared_farmers_query = db.query(
-        PartnerAssociation.entity_id
-    ).filter(
-        PartnerAssociation.status == "active"
-    ).group_by(
-        PartnerAssociation.entity_id
-    ).having(func.count(PartnerAssociation.partner_id) > 1).count()
+    shared_farmers_query = (
+        db.query(PartnerAssociation.entity_id)
+        .join(FarmerEntity, PartnerAssociation.entity_id == FarmerEntity.entity_id)
+        .filter(PartnerAssociation.status == "active", FarmerEntity.status == "active")
+        .group_by(PartnerAssociation.entity_id)
+        .having(func.count(PartnerAssociation.partner_id) > 1)
+        .count()
+    )
 
     # Consent breakdown
     active_consents = db.query(FarmerConsent).filter(FarmerConsent.status == "ACTIVE").count()

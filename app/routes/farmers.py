@@ -29,6 +29,7 @@ from app.schemas import (
 )
 from app.hashing import rekey_hash, compute_voprf_storage_digest
 from app.auth import authenticate_partner
+from app.routes.evaluator import EVALUATOR_KEY_ID
 
 router = APIRouter(prefix="/v1/farmers", tags=["farmers"])
 
@@ -70,7 +71,8 @@ def process_farmer_registration(
     # Bridge to FarmerEntity and TokenAlias
     entity_alias = db.query(TokenAlias).filter(
         TokenAlias.scheme == "legacy_hmac",
-        TokenAlias.digest_d == hash_key
+        TokenAlias.digest_d == hash_key,
+        TokenAlias.status == "active"
     ).first()
 
     if not entity_alias:
@@ -81,7 +83,7 @@ def process_farmer_registration(
             entity_id=entity.entity_id,
             pilot_id="kenya-pilot",
             scheme="legacy_hmac",
-            key_id="v1",
+            key_id="legacy-hmac-v1",
             digest_d=hash_key,
             created_at=now
         )
@@ -233,14 +235,21 @@ def register_farmer_voprf_token(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid base64 token format")
 
+    if payload.key_id != EVALUATOR_KEY_ID:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid or deprecated key_id '{payload.key_id}'. Registrations must use active Evaluator key epoch '{EVALUATOR_KEY_ID}'."
+        )
+
     now = datetime.now(timezone.utc)
     digest_d = compute_voprf_storage_digest(payload.pilot_id, payload.key_id, raw_token)
 
-    # 1. Check existing alias
+    # 1. Check existing alias (strictly active only - ignore quarantined/compromised aliases)
     alias = db.query(TokenAlias).filter(
         TokenAlias.pilot_id == payload.pilot_id,
         TokenAlias.key_id == payload.key_id,
-        TokenAlias.digest_d == digest_d
+        TokenAlias.digest_d == digest_d,
+        TokenAlias.status == "active"
     ).first()
 
     is_new = False

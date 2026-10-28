@@ -1,3 +1,5 @@
+import os
+import sys
 import secrets
 import string
 import hmac
@@ -15,6 +17,7 @@ def main():
     partner_key = generate_key(32)
     server_key = generate_key(32)
     admin_key = generate_key(32)
+    evaluator_secret_k = generate_key(32)
     dashboard_pass = secrets.token_urlsafe(16)
     
     print(f"PARTNER_KEY (Shared pilot secret for delivery partners):")
@@ -23,6 +26,8 @@ def main():
     print(f"  {server_key}\n")
     print(f"ADMIN_KEY (Private key for administrative inspection):")
     print(f"  {admin_key}\n")
+    print(f"EVALUATOR_SECRET_K (Evaluator master private key scalar for VOPRF epoch ke-pilot-v3):")
+    print(f"  {evaluator_secret_k}\n")
     print(f"DASHBOARD_PASSWORD (Password for HTTP Basic Auth):")
     print(f"  {dashboard_pass}\n")
     print("-------------------------------------------------------")
@@ -30,7 +35,6 @@ def main():
     print("Never commit this file or the generated keys to Git.")
     print("=======================================================")
 
-    import sys
     if "--write-env" in sys.argv:
         env_path = ".env"
         if not os.path.exists(env_path):
@@ -39,6 +43,8 @@ def main():
                 f.write(f"DATABASE_URL=sqlite:///./local.db\n")
                 f.write(f"SERVER_KEY={server_key}\n")
                 f.write(f"ADMIN_KEY={admin_key}\n")
+                f.write(f"EVALUATOR_SECRET_K={evaluator_secret_k}\n")
+                f.write(f"EVALUATOR_KEY_ID=ke-pilot-v3\n")
                 f.write(f"PARTNER_KEY=partner_shared_pilot_secret\n")
                 f.write(f"PILOT_START_DATE=2026-10-01\n")
                 f.write(f"DASHBOARD_USER=admin\n")
@@ -49,6 +55,4 @@ def main():
             print(f"{env_path} already exists. Not overwriting.")
 
 if __name__ == "__main__":
-    import os
     main()
-

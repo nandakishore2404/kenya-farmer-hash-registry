@@ -27,6 +27,11 @@ COMMITTED_INSECURE_KEYS = {
     "alpha_api_key_pilot_2026",
     "beta_api_key_pilot_2026",
     "gamma_api_key_pilot_2026",
+    # Burned VOPRF Evaluator Scalars from public repository history (permanently burned)
+    "0x7a2f3e1b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f",
+    "7a2f3e1b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f",
+    "0x5d8a9f1b2c3e4d5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f91",
+    "5d8a9f1b2c3e4d5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f91",
 }
 
 class Settings(BaseSettings):
@@ -35,6 +40,8 @@ class Settings(BaseSettings):
     DATABASE_URL: Optional[str] = None
     SERVER_KEY: Optional[str] = None
     ADMIN_KEY: Optional[str] = None
+    EVALUATOR_SECRET_K: Optional[str] = None
+    EVALUATOR_KEY_ID: str = "ke-pilot-v3"
     PILOT_START_DATE: str = "2026-10-01"
     SUPPRESSION_THRESHOLD: int = 5  # Privacy k-anonymity rule: suppress counts < 5
     DASHBOARD_USER: str = "admin"
@@ -48,10 +55,22 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_production_security(self):
         """
-        Enforce strict validation when ENV is not 'development'.
+        Enforce strict validation across environments.
         Refuses startup if keys are missing, shorter than 32 characters, contain CHANGE_ME,
-        match known committed placeholders, use SQLite, or enable test partner seeding.
+        match known committed placeholders, use SQLite in production, or enable test partner seeding.
         """
+        # Evaluator Secret Key validation (Mandatory in ALL environments - no literal fallback)
+        if not self.EVALUATOR_SECRET_K or not self.EVALUATOR_SECRET_K.strip():
+            raise ValueError(
+                "Evaluator configuration error: EVALUATOR_SECRET_K is required and cannot be empty. "
+                "In production SAFIC deployments, this must be loaded from CloudHSM / Vault transit."
+            )
+        evaluator_k_clean = self.EVALUATOR_SECRET_K.strip().lower()
+        if "change_me" in evaluator_k_clean or evaluator_k_clean in COMMITTED_INSECURE_KEYS:
+            raise ValueError(
+                "Evaluator configuration error: EVALUATOR_SECRET_K matches a known burned or insecure placeholder key."
+            )
+
         if self.ENV != "development":
             # 1. SERVER_KEY
             if not self.SERVER_KEY:

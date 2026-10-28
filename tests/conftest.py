@@ -4,11 +4,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-# Use a test database
+# Set test environment variables before importing app modules
 os.environ["ENV"] = "development"
 os.environ["DATABASE_URL"] = "sqlite:///./test_registry.db"
 os.environ["SERVER_KEY"] = "test_server_secret_rekey_key_abc123"
 os.environ["ADMIN_KEY"] = "test_admin_key_super_secret"
+os.environ["EVALUATOR_SECRET_K"] = "e8c7b6a5d4c3b2a1908f7e6d5c4b3a2918273645e5d4c3b2a10987654321abcd"
+os.environ["EVALUATOR_KEY_ID"] = "ke-pilot-v3"
 
 from app.config import settings
 from app.database import Base, get_db
@@ -20,12 +22,17 @@ TEST_DB_URL = "sqlite:///./test_registry.db"
 test_engine = create_engine(TEST_DB_URL, connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="function", autouse=True)
 def setup_test_db():
+    """
+    Per-test database isolation fixture.
+    Drops and recreates all tables per test function, seeding fresh test partners.
+    Prevents cross-test state leakage, duplicate nonces, and SQLite lock contention.
+    """
     Base.metadata.drop_all(bind=test_engine)
     Base.metadata.create_all(bind=test_engine)
     
-    # Pre-seed partners
+    # Pre-seed neutral test partners
     db = TestingSessionLocal()
     for p in TEST_PARTNERS:
         db.add(Partner(
@@ -40,11 +47,6 @@ def setup_test_db():
     yield
     
     Base.metadata.drop_all(bind=test_engine)
-    if os.path.exists("./test_registry.db"):
-        try:
-            os.remove("./test_registry.db")
-        except Exception:
-            pass
 
 @pytest.fixture
 def db_session():

@@ -12,6 +12,8 @@ Tests the 20 Critical Architectural Edge Cases:
 """
 
 import os
+os.environ["EVALUATOR_SECRET_K"] = "e8c7b6a5d4c3b2a1908f7e6d5c4b3a2918273645e5d4c3b2a10987654321abcd"
+os.environ["EVALUATOR_KEY_ID"] = "ke-pilot-v3"
 import uuid
 import base64
 import pytest

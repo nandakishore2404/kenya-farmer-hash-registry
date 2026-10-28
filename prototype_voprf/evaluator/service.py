@@ -1,12 +1,13 @@
 """
 Independent VOPRF Evaluator Microservice (RFC 9497)
-- Holds secret scalar k in isolated custody.
+- Holds secret scalar k in isolated custody loaded at runtime from environment / CloudHSM / Vault.
 - Exposes /v1/evaluations for authorized partners only.
 - Computes Z = k * B and DLEQ proof.
 - Enforces rate-limiting quotas and replay guards.
 - NEVER receives cleartext phone numbers or client identities.
 """
 
+import os
 from fastapi import FastAPI, HTTPException, Header, status, Depends
 from pydantic import BaseModel, Field
 from typing import List, Optional
@@ -22,12 +23,29 @@ from prototype_voprf.crypto.voprf_engine import (
 
 app = FastAPI(title="OAN Kenya VOPRF Independent Evaluator", version="1.0.0")
 
-# Evaluator Private Key k (in production, held in AWS CloudHSM / Vault)
-# Key Epoch v2: Fresh Evaluator Key after deprecation of compromised v1 key
-EVALUATOR_SECRET_K = 0x5D8A9F1B2C3E4D5A6B7C8D9E0F1A2B3C4D5E6F7A8B9C0D1E2F3A4B5C6D7E8F91 % N_ORDER
-# Evaluator Public Key K = k * G
-EVALUATOR_PUBLIC_KEY = GroupElement(point_mul(EVALUATOR_SECRET_K, GENERATOR_G.pt))
-KEY_ID = "ke-pilot-v2"
+def load_evaluator_key() -> tuple[str, int, GroupElement]:
+    key_id = os.environ.get("EVALUATOR_KEY_ID", "ke-pilot-v3")
+    raw_k = os.environ.get("EVALUATOR_SECRET_K")
+    if not raw_k or not raw_k.strip():
+        raise RuntimeError(
+            "FATAL: EVALUATOR_SECRET_K is required. Must be set via secure environment variable or HSM interface."
+        )
+    clean_k = raw_k.strip()
+    try:
+        if clean_k.startswith("0x") or clean_k.startswith("0X"):
+            k_val = int(clean_k, 16) % N_ORDER
+        else:
+            k_val = int(clean_k, 16) % N_ORDER
+    except ValueError:
+        k_val = int(clean_k) % N_ORDER
+
+    if k_val == 0:
+        raise RuntimeError("FATAL: EVALUATOR_SECRET_K cannot be zero modulo curve order.")
+
+    pub_pt = point_mul(k_val, GENERATOR_G.pt)
+    return key_id, k_val, GroupElement(pub_pt)
+
+KEY_ID, EVALUATOR_SECRET_K, EVALUATOR_PUBLIC_KEY = load_evaluator_key()
 
 # Allowed partner credentials for mTLS/API Gateway simulation
 AUTHORIZED_PARTNERS = {
@@ -70,7 +88,8 @@ def get_public_key():
         "key_id": KEY_ID,
         "public_key": base64.b64encode(EVALUATOR_PUBLIC_KEY.to_bytes()).decode("utf-8"),
         "curve": "secp256k1-SHA512",
-        "status": "active"
+        "status": "active",
+        "epoch": "v3"
     }
 
 @app.post("/v1/evaluations", response_model=EvaluatedElementResponse)

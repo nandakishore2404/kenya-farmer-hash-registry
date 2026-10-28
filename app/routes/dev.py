@@ -71,15 +71,23 @@ def get_dev_console(request: Request):
 @router.get("/unsuppressed-metrics")
 def get_unsuppressed_metrics(db: Session = Depends(get_db)):
     check_development_mode()
-    total_farmers = db.query(FarmerEntity).count()
+    total_farmers = db.query(FarmerEntity).filter(FarmerEntity.status == "active").count()
     if total_farmers == 0:
         total_farmers = db.query(Farmer).count()
 
-    total_associations = db.query(PartnerAssociation).filter(PartnerAssociation.status == "active").count()
+    total_associations = (
+        db.query(PartnerAssociation)
+        .join(FarmerEntity, PartnerAssociation.entity_id == FarmerEntity.entity_id)
+        .filter(PartnerAssociation.status == "active", FarmerEntity.status == "active")
+        .count()
+    )
     if total_associations == 0:
         total_associations = db.query(PartnerLink).filter(PartnerLink.status == "active").count()
 
-    total_removed = db.query(FarmerConsent).filter(FarmerConsent.status == "WITHDRAWN").count()
+    total_removed = (
+        db.query(FarmerConsent).filter(FarmerConsent.status == "WITHDRAWN").count()
+        + db.query(PartnerLink).filter(PartnerLink.status == "removed").count()
+    )
     active_consents = db.query(FarmerConsent).filter(FarmerConsent.status == "ACTIVE").count()
 
     overlap_count = max(0, total_associations - total_farmers)
@@ -113,7 +121,10 @@ def get_unsuppressed_metrics(db: Session = Depends(get_db)):
     )
     events = []
     for a in recent_assocs:
-        alias = db.query(TokenAlias).filter(TokenAlias.entity_id == a.entity_id).first()
+        alias = db.query(TokenAlias).filter(
+            TokenAlias.entity_id == a.entity_id,
+            TokenAlias.status == "active"
+        ).first()
         f_code = (alias.digest_d[:12] + "...") if alias else (a.entity_id[:8] + "...")
         events.append({
             "partner_id": a.partner_id,
@@ -194,7 +205,8 @@ def dev_voprf_register(payload: VOPRFRegisterPayload, db: Session = Depends(get_
     alias = db.query(TokenAlias).filter(
         TokenAlias.pilot_id == "kenya-pilot",
         TokenAlias.key_id == EVALUATOR_KEY_ID,
-        TokenAlias.digest_d == digest_d
+        TokenAlias.digest_d == digest_d,
+        TokenAlias.status == "active"
     ).first()
 
     is_new = False
@@ -583,7 +595,8 @@ def run_scenario(scenario_name: str, db: Session = Depends(get_db)):
         existing_alias = db.query(TokenAlias).filter(
             TokenAlias.pilot_id == "kenya-pilot",
             TokenAlias.key_id == EVALUATOR_KEY_ID,
-            TokenAlias.digest_d == digest_new
+            TokenAlias.digest_d == digest_new,
+            TokenAlias.status == "active"
         ).first()
         if not existing_alias:
             db.add(TokenAlias(

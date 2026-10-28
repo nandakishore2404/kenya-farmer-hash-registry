@@ -88,6 +88,21 @@ def test_farmer_registration_branches_and_idempotency(client, db_session):
 
 
 def test_partner_summary_aggregates(client):
+    # Setup farmer registered by Partner Alpha, then Partner Beta
+    phone = "0712345678"
+    h = hash_phone(phone, PARTNER_KEY)
+    body = json.dumps({
+        "hash": h,
+        "gender": "F",
+        "age_band": "25-34",
+        "county_code": "047",
+        "onboarded_at": "2026-10-01T12:00:00"
+    }).encode("utf-8")
+    headers_a = get_auth_headers(ALPHA_KEY, body, method="POST", path="/v1/farmers")
+    client.post("/v1/farmers", content=body, headers=headers_a)
+    headers_b = get_auth_headers(BETA_KEY, body, method="POST", path="/v1/farmers")
+    client.post("/v1/farmers", content=body, headers=headers_b)
+
     # Partner Alpha summary
     body = b""
     headers_alpha = get_auth_headers(ALPHA_KEY, body, method="GET", path="/v1/partners/me/summary", content_type=None)
@@ -139,8 +154,20 @@ def test_consent_withdrawal_and_cascade(client, db_session):
     phone = "0712345678"
     h = hash_phone(phone, PARTNER_KEY)
     rekeyed = rekey_hash(h)
+
+    # Setup farmer with 2 links: alpha and beta
+    body = json.dumps({
+        "hash": h,
+        "gender": "F",
+        "age_band": "25-34",
+        "county_code": "047",
+        "onboarded_at": "2026-10-01T12:00:00"
+    }).encode("utf-8")
+    headers_a = get_auth_headers(ALPHA_KEY, body, method="POST", path="/v1/farmers")
+    client.post("/v1/farmers", content=body, headers=headers_a)
+    headers_b = get_auth_headers(BETA_KEY, body, method="POST", path="/v1/farmers")
+    client.post("/v1/farmers", content=body, headers=headers_b)
     
-    # Currently farmer has 2 links: alpha and beta
     # Alpha withdraws consent
     headers_alpha = get_auth_headers(ALPHA_KEY, b"", method="DELETE", path=f"/v1/farmers/{h}", content_type=None)
     res1 = client.delete(f"/v1/farmers/{h}", headers=headers_alpha)
@@ -162,8 +189,19 @@ def test_consent_withdrawal_and_cascade(client, db_session):
 
 
 def test_admin_lookup(client):
-    phone = "0722334455"  # uploaded in csv test
+    phone = "0722334455"
     h = hash_phone(phone, PARTNER_KEY)
+
+    # Setup farmer for admin lookup
+    body = json.dumps({
+        "hash": h,
+        "gender": "M",
+        "age_band": "35-44",
+        "county_code": "032",
+        "onboarded_at": "2026-10-02T10:00:00"
+    }).encode("utf-8")
+    headers = get_auth_headers(ALPHA_KEY, body, method="POST", path="/v1/farmers")
+    client.post("/v1/farmers", content=body, headers=headers)
     
     # Without admin key -> 403
     res_fail = client.get(f"/admin/lookup?hash={h}")

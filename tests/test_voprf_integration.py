@@ -58,33 +58,7 @@ from sdk.python.voprf_client import (
     normalise_kenyan_phone
 )
 
-# Test in-memory SQLite database
-TEST_DB_URL = "sqlite:///./test_voprf_integration.db"
-test_engine = create_engine(TEST_DB_URL, connect_args={"check_same_thread": False})
-TestSession = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
-
-@pytest.fixture(autouse=True)
-def setup_test_db():
-    Base.metadata.drop_all(bind=test_engine)
-    Base.metadata.create_all(bind=test_engine)
-    
-    db = TestSession()
-    # Seed partners
-    p1 = Partner(partner_id="test_partner_a", name="One Acre Fund", api_key_hash="hash_a", active=1)
-    p2 = Partner(partner_id="test_partner_b", name="DigiFarm", api_key_hash="hash_b", active=1)
-    db.add(p1)
-    db.add(p2)
-    db.commit()
-    db.close()
-    
-    yield
-    
-    Base.metadata.drop_all(bind=test_engine)
-    if os.path.exists("./test_voprf_integration.db"):
-        try:
-            os.remove("./test_voprf_integration.db")
-        except Exception:
-            pass
+from tests.conftest import TestingSessionLocal as TestSession
 
 def helper_evaluate(pilot_id: str, key_id: str, b_b64: str, partner: Partner):
     req = EvaluationRequest(
@@ -177,9 +151,11 @@ def test_consent_lifecycle_and_pep():
     db = TestSession()
     partner_a = db.query(Partner).filter(Partner.partner_id == "test_partner_a").first()
 
-    # Create entity
+    # Create entity and associate partner_a
     entity = FarmerEntity(status="active")
     db.add(entity)
+    db.flush()
+    db.add(PartnerAssociation(entity_id=entity.entity_id, partner_id=partner_a.partner_id, role="onboarder", status="active"))
     db.commit()
 
     # Pre-consent check
@@ -311,16 +287,12 @@ def test_hash_to_group_has_no_known_dlog():
     assert N_honest.pt != forged_point.pt, "CRITICAL DEFECT: Attacker forged unblinded element N without private key!"
     assert token_honest != token_forged, "CRITICAL DEFECT: Attacker forged finalized token T using public key shortcut!"
 
-def test_consent_check_unauthenticated_rejected():
+def test_consent_check_unauthenticated_rejected(client):
     """
     TASK 5 HARDENING VERIFICATION:
     Asserts that an unauthenticated call to GET /v1/consent/check
     with no partner headers is strictly rejected with HTTP 401 Unauthorized.
     """
-    from fastapi.testclient import TestClient
-    from app.main import app
-
-    client = TestClient(app)
     resp = client.get("/v1/consent/check?entity_id=00000000-0000-0000-0000-000000000000&purpose=ADVISORY")
     assert resp.status_code == 401
     assert "detail" in resp.json()

@@ -61,10 +61,12 @@ def point_add(p1: Point, p2: Point) -> Point:
 
 def point_mul(k: int, p: Point) -> Point:
     """
-    Constant-time Montgomery ladder scalar multiplication for Point p.
-    Executes a fixed 256 iterations to mitigate timing side channels on scalar k.
-    Note: In production SAFIC deployments, the evaluator secret key k resides
-    exclusively in hardware (AWS CloudHSM / HashiCorp Vault transit engine).
+    Fixed-iteration Montgomery ladder scalar multiplication for Point p.
+    Executes a fixed 256 iterations to eliminate scalar-dependent loop termination.
+    Note: In pure Python, branch instructions in point addition and big-integer
+    arithmetic do not guarantee complete constant time; timing resistance in
+    production SAFIC deployments relies on secret scalar k residing in dedicated
+    hardware (AWS CloudHSM / HashiCorp Vault transit engine).
     """
     if p is None:
         return None
@@ -128,11 +130,14 @@ def length_prefix(s: str | bytes) -> bytes:
 
 def hash_to_group(x: bytes) -> GroupElement:
     """
-    RFC 9380 / Try-and-increment hash-to-curve for secp256k1.
+    Try-and-increment hash-to-curve for secp256k1.
     Finds a valid point (x_cand, y) on y^2 = x^3 + 7 mod P_FIELD with UNKNOWN
     discrete logarithm relative to generator G.
     Since P_FIELD = 3 mod 4, the candidate square root is v^((p+1)/4) mod p,
     verified by squaring.
+    (Note: RFC 9380 formally specifies Simplified SWU for secp256k1; this try-and-increment
+    implementation achieves the required unknown-DL property with variable iteration
+    count, observed 0-8 iterations, mean ~1.0).
     CRITICAL: Does NOT hash to a scalar and multiply G; point relation to G is
     infeasible to compute outside the HSM.
     """
