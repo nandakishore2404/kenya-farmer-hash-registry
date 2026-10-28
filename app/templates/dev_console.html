@@ -29,212 +29,315 @@
         }
         .circuit-node {
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+        }
+        .circuit-node:hover {
+            border-color: #38bdf8;
+            transform: translateY(-2px);
         }
         .circuit-node.energized {
-            transform: scale(1.04);
+            transform: scale(1.03);
             border-color: #10b981;
-            box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.35);
         }
         .circuit-node.tripped {
-            transform: scale(1.04);
+            transform: scale(1.03);
             border-color: #f43f5e;
-            box-shadow: 0 0 20px rgba(244, 63, 94, 0.3);
+            box-shadow: 0 0 20px rgba(244, 63, 94, 0.35);
+        }
+        .tab-btn.active {
+            border-color: #10b981;
+            color: #34d399;
+            background-color: rgba(16, 185, 129, 0.1);
         }
     </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen">
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans selection:bg-emerald-500 selection:text-slate-950">
     <!-- Top Navigation Header -->
-    <header class="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-50 px-6 py-4 flex flex-wrap items-center justify-between gap-4">
+    <header class="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-50 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 shadow-md">
         <div class="flex items-center space-x-3">
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">OAN KENYA DPI</span>
-            <h1 class="text-lg font-bold text-white tracking-tight">Farmer Identity, Deduplication & Consent Architecture (Test Console)</h1>
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">OAN KENYA DPI</span>
+            <h1 class="text-base font-bold text-white tracking-tight">Farmer Identity, Deduplication & Consent Architecture (Interactive Test Console)</h1>
         </div>
-        <div class="flex items-center space-x-4 text-sm">
+        <div class="flex items-center space-x-4 text-xs">
             <a href="/dashboard" target="_blank" class="inline-flex items-center px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-400 font-semibold transition">
-                <span>Open Advisory Dashboard</span>
+                <span>Open National Dashboard</span>
                 <span class="ml-1.5 font-bold">&rarr;</span>
             </a>
-            <a href="/v1/telemetry/dpi-metrics" target="_blank" class="text-xs text-sky-400 hover:text-sky-300 font-mono">
+            <a href="/v1/telemetry/dpi-metrics" target="_blank" class="text-sky-400 hover:text-sky-300 font-mono">
                 /v1/telemetry/dpi-metrics
             </a>
         </div>
     </header>
 
-    <div class="max-w-7xl mx-auto p-6 space-y-6">
-        <!-- Live Observability Cards Row -->
+    <main class="max-w-7xl mx-auto p-6 space-y-6 flex-1 w-full">
+        <!-- Live Observability Metrics Row -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div class="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-sm">
-                <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Unique Verified Farmers</div>
-                <div id="statUniqueFarmers" class="text-2xl font-bold text-emerald-400 mt-1">2,938</div>
-                <div class="text-[11px] text-slate-500 mt-0.5">Canonical RFC 9497 entities</div>
+            <div class="bg-slate-900/90 p-4 rounded-xl border border-slate-800 shadow-sm">
+                <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Unique Real Farmers</div>
+                <div id="statUniqueFarmers" class="text-2xl font-black text-emerald-400 mt-1">2,938</div>
+                <div class="text-[11px] text-slate-500 mt-0.5">Deduplicated VOPRF Entities</div>
             </div>
-            <div class="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-sm">
-                <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Active Partner Registrations</div>
-                <div id="statActiveLinks" class="text-2xl font-bold text-sky-400 mt-1">3,504</div>
-                <div class="text-[11px] text-slate-500 mt-0.5">Total across all providers</div>
+            <div class="bg-slate-900/90 p-4 rounded-xl border border-slate-800 shadow-sm">
+                <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Active Partner Registrations</div>
+                <div id="statActiveLinks" class="text-2xl font-black text-sky-400 mt-1">3,504</div>
+                <div class="text-[11px] text-slate-500 mt-0.5">SunCulture, DigiCow, KENAFF</div>
             </div>
-            <div class="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-sm">
-                <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Cross-Provider Overlap</div>
-                <div id="statOverlapRate" class="text-2xl font-bold text-purple-400 mt-1">16.15%</div>
+            <div class="bg-slate-900/90 p-4 rounded-xl border border-slate-800 shadow-sm">
+                <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Cross-Provider Overlap</div>
+                <div id="statOverlapRate" class="text-2xl font-black text-purple-400 mt-1">16.15%</div>
                 <div class="text-[11px] text-slate-500 mt-0.5"><span id="statOverlapCount">566</span> multi-partner farmers</div>
             </div>
-            <div class="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-sm">
-                <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Consent Registry (PEP)</div>
-                <div class="text-2xl font-bold mt-1 text-white">
+            <div class="bg-slate-900/90 p-4 rounded-xl border border-slate-800 shadow-sm">
+                <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Consent Registry (PEP)</div>
+                <div class="text-2xl font-black mt-1 text-white">
                     <span id="statActiveConsents" class="text-emerald-400">3,469</span>
                     <span class="text-xs text-slate-500 font-normal">/</span>
                     <span id="statRemovedLinks" class="text-rose-400 text-lg">35</span>
                 </div>
-                <div class="text-[11px] text-slate-500 mt-0.5">Active / Withdrawn (Enforced)</div>
+                <div class="text-[11px] text-slate-500 mt-0.5">Active / Withdrawn (100% Enforced)</div>
             </div>
         </div>
 
         <!-- ==================================================================== -->
-        <!-- THE CIRCUIT MODEL: Interactive Flowchart with Switch & Lightbulb    -->
+        <!-- SYSTEM ARCHITECTURE BOUNDARY: OUTSIDE VS INSIDE OAN                  -->
+        <!-- ==================================================================== -->
+        <div class="bg-slate-900/60 rounded-2xl border border-slate-800 p-5 shadow-xl">
+            <div class="flex items-center justify-between pb-3 mb-4 border-b border-slate-800">
+                <div class="flex items-center gap-2.5">
+                    <span class="px-2 py-0.5 text-[11px] font-bold rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">SYSTEM ARCHITECTURE BOUNDARY</span>
+                    <h3 class="text-sm font-bold text-white tracking-tight">Zero-Knowledge Privacy Utility (Sits OUTSIDE OAN) vs. Open AgriNet Network (Beckn Core)</h3>
+                </div>
+                <span class="text-[11px] text-slate-400 font-mono">KDPA 2019 & Beckn Specification Compliant</span>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 text-xs">
+                <!-- OUTSIDE OAN: External Privacy Utility (7 cols) -->
+                <div class="lg:col-span-7 bg-blue-950/20 border-2 border-blue-500/40 rounded-xl p-4 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="font-bold text-blue-400 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                                <span class="h-2 w-2 rounded-full bg-blue-400 animate-pulse"></span>
+                                1. EXTERNAL ZERO-KNOWLEDGE TRUST UTILITY (Sits OUTSIDE OAN)
+                            </span>
+                            <span class="text-[10px] text-blue-300 font-semibold bg-blue-900/40 px-2 py-0.5 rounded border border-blue-700/50">Independent Privacy Anchor</span>
+                        </div>
+                        <p class="text-[11px] text-slate-300 mb-3 leading-relaxed">
+                            Under the Kenya Data Protection Act (KDPA 2019), raw phone numbers and national IDs are processed strictly outside OAN. The client-side tablet blinds the number before transmission, and an isolated CloudHSM Notary evaluates it blind.
+                        </p>
+                        <div class="grid grid-cols-3 gap-2 text-center text-[10px]">
+                            <div class="bg-slate-900/90 p-2 rounded-lg border border-blue-500/30">
+                                <span class="text-blue-300 font-bold block mb-0.5">Partner Edge</span>
+                                <span class="text-slate-400">SunCulture / DigiCow Tablet Blinds: B = r·P</span>
+                            </div>
+                            <div class="bg-slate-900/90 p-2 rounded-lg border border-blue-500/30">
+                                <span class="text-amber-300 font-bold block mb-0.5">Evaluator HSM</span>
+                                <span class="text-slate-400">Zero-Knowledge Stamping: Z = k·B + DLEQ</span>
+                            </div>
+                            <div class="bg-slate-900/90 p-2 rounded-lg border border-blue-500/30">
+                                <span class="text-emerald-300 font-bold block mb-0.5">Canonical Registry</span>
+                                <span class="text-slate-400">Maps Digest D &rarr; UUID. Deduplicates 16.15%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-2.5 border-t border-blue-500/20 flex items-center justify-between text-[11px]">
+                        <span class="text-emerald-400 font-medium font-mono">&rarr; Plaintext Phone Never Leaves Device RAM</span>
+                        <span class="text-slate-400 font-mono">RFC 9497 VOPRF Protocol</span>
+                    </div>
+                </div>
+
+                <!-- BOUNDARY BRIDGE (Data Crossing) -->
+                <div class="lg:col-span-5 bg-emerald-950/20 border-2 border-emerald-500/40 rounded-xl p-4 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="font-bold text-emerald-400 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                                <span class="h-2 w-2 rounded-full bg-emerald-400"></span>
+                                2. OPEN AGRINET (OAN) NETWORK CORE (Beckn Protocol)
+                            </span>
+                            <span class="text-[10px] text-emerald-300 font-semibold bg-emerald-900/40 px-2 py-0.5 rounded border border-emerald-700/50">Zero PII Ingested</span>
+                        </div>
+                        <p class="text-[11px] text-slate-300 mb-3 leading-relaxed">
+                            OAN operates strictly on <strong>pseudonymous cryptographic tokens (T)</strong>. The AgriNet AI Agent, Beckn Gateways, and BPPs deliver agronomic and weather insights without knowing who the farmer is.
+                        </p>
+                        <div class="grid grid-cols-2 gap-2 text-center text-[10px]">
+                            <div class="bg-slate-900/90 p-2 rounded-lg border border-emerald-500/30">
+                                <span class="text-emerald-300 font-bold block mb-0.5">Beckn Gateway & AI</span>
+                                <span class="text-slate-400">AgriNet Agent & BPP Services (Weather, Prices)</span>
+                            </div>
+                            <div class="bg-slate-900/90 p-2 rounded-lg border border-emerald-500/30">
+                                <span class="text-sky-300 font-bold block mb-0.5">PEP Turnstile (<0.05ms)</span>
+                                <span class="text-slate-400">Checks External Consent Before Telecom SMS</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-2.5 border-t border-emerald-500/20 flex items-center justify-between text-[11px]">
+                        <span class="text-sky-400 font-medium font-mono">Telephony Rail: Africa's Talking / Safaricom</span>
+                        <span class="text-emerald-400 font-bold font-mono">Only Token T Crosses &rarr;</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================================================================== -->
+        <!-- THE 7-STEP INTERACTIVE CIRCUIT & LIGHTBULB MODEL                    -->
         <!-- ==================================================================== -->
         <div class="bg-gradient-to-br from-slate-900 via-slate-900/95 to-slate-950 rounded-2xl border-2 border-emerald-500/30 p-6 shadow-2xl relative overflow-hidden">
             <div class="flex flex-wrap items-center justify-between pb-4 mb-5 border-b border-slate-800 gap-4">
                 <div>
                     <div class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 mb-1">
-                        <span>⚡ INTERACTIVE ELECTRICAL CIRCUIT MODEL</span>
+                        <span>⚡ 7-STEP INTERACTIVE ELECTRICAL CIRCUIT MODEL</span>
                     </div>
                     <h2 class="text-lg font-bold text-white tracking-tight">
-                        How Cryptography & Advisory Delivery Work in Practice
+                        How Cryptography & Advisory Delivery Work in Practice (Click Any Step to Inspect Dual-Lens)
                     </h2>
-                    <p class="text-xs text-slate-400 mt-0.5 max-w-2xl">
-                        Flip the switch to send electric current through the privacy circuit. Watch how the phone is shielded, authenticated blindly, and checked at the Policy Enforcement Point (PEP) before the lightbulb turns ON or the circuit breaker trips!
+                    <p class="text-xs text-slate-400 mt-0.5 max-w-3xl leading-relaxed">
+                        Flip the switch to send electric current through the privacy circuit. Watch how the phone number is shielded at the partner edge, authenticated blindly by the Notary HSM, deduplicated without names, and verified at the Policy Enforcement Point (PEP) before the lightbulb turns ON!
                     </p>
                 </div>
                 <div class="flex items-center gap-3">
-                    <button id="btnFlipSwitch" onclick="toggleCircuitSwitch()" class="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl transition shadow-lg shadow-emerald-500/20 flex items-center gap-2 cursor-pointer">
+                    <button id="btnFlipSwitch" onclick="toggleCircuitSwitch()" class="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl transition shadow-lg shadow-emerald-500/25 flex items-center gap-2 cursor-pointer">
                         <span id="switchIcon">⚡</span>
                         <span id="switchBtnText">FLIP SWITCH ON</span>
                     </button>
                 </div>
             </div>
 
-            <!-- Preset Scenarios Toolbar -->
-            <div class="mb-6 bg-slate-950/70 p-3 rounded-xl border border-slate-800 flex flex-wrap items-center gap-2">
+            <!-- Quick Presets Toolbar: Authentic OAN Kenya Partners -->
+            <div class="mb-5 bg-slate-950/70 p-3 rounded-xl border border-slate-800 flex flex-wrap items-center gap-2">
                 <span class="text-xs font-bold text-slate-400 uppercase tracking-wider mr-1">Quick Scenarios:</span>
-                <button onclick="loadPresetScenario('scenario1')" class="text-xs px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 font-medium transition">
-                    📱 1. Active Maize Farmer (One Acre Fund)
+                <button onclick="loadPresetScenario('scenario1')" class="text-xs px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 font-medium transition flex items-center gap-1.5">
+                    <span>📱 1. Active Solar Farmer (SunCulture)</span>
                 </button>
-                <button onclick="loadPresetScenario('scenario2')" class="text-xs px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-purple-400 border border-slate-700 font-medium transition">
-                    🔄 2. Multi-Partner Overlap (KTDA Tea)
+                <button onclick="loadPresetScenario('scenario2')" class="text-xs px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-purple-400 border border-slate-700 font-medium transition flex items-center gap-1.5">
+                    <span>🔄 2. Multi-Partner Overlap (DigiCow Dairy)</span>
                 </button>
-                <button onclick="loadPresetScenario('scenario3')" class="text-xs px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-400 border border-slate-700 font-medium transition">
-                    🛑 3. Consent Opt-Out (KDPA Block)
+                <button onclick="loadPresetScenario('scenario3')" class="text-xs px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-400 border border-slate-700 font-medium transition flex items-center gap-1.5">
+                    <span>🛑 3. Consent Opt-Out (USSD *384#)</span>
                 </button>
-                <button onclick="loadPresetScenario('scenario4')" class="text-xs px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 font-medium transition">
-                    👨‍👩‍👧 4. Shared Household Phone
+                <button onclick="loadPresetScenario('scenario4')" class="text-xs px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 font-medium transition flex items-center gap-1.5">
+                    <span>🌾 4. KENAFF Federation Roster</span>
                 </button>
-                <button onclick="loadPresetScenario('scenario5')" class="text-xs px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 font-medium transition">
-                    ⚠️ 5. Malformed Number Fix
+                <button onclick="loadPresetScenario('scenario5')" class="text-xs px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 font-medium transition flex items-center gap-1.5">
+                    <span>⚠️ 5. Malformed Raw Input Fix</span>
                 </button>
             </div>
 
-            <!-- The Circuit Board Grid (6 Connected Components) -->
-            <div class="grid grid-cols-1 md:grid-cols-6 gap-3 relative items-stretch mb-6">
-                <!-- Node 1: The Switch (Raw Phone) -->
-                <div id="circuitNode1" class="circuit-node bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
+            <!-- The 7-Node Circuit Board Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-7 gap-2.5 relative items-stretch mb-5">
+                <!-- Step 1: Input & Normalization -->
+                <div id="circuitNode1" onclick="openStepModal(1)" class="circuit-node bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex flex-col justify-between">
                     <div>
-                        <div class="flex items-center justify-between mb-2">
-                            <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">Node 1</span>
-                            <span id="node1Status" class="text-[11px] font-mono text-slate-500">READY</span>
+                        <div class="flex items-center justify-between mb-1.5">
+                            <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">Step 1</span>
+                            <span id="node1Status" class="text-[10px] font-mono text-slate-500">READY</span>
                         </div>
-                        <h4 class="text-xs font-bold text-white mb-1">🔌 The Switch</h4>
-                        <p class="text-[11px] text-slate-400 leading-tight mb-2">Farmer inputs number on basic 2G phone.</p>
+                        <h4 class="text-xs font-bold text-white mb-0.5">🔌 Input Switch</h4>
+                        <p class="text-[10px] text-slate-400 leading-tight mb-2">SunCulture Tablet captures raw phone.</p>
                     </div>
-                    <div class="bg-slate-900/90 p-2 rounded text-[11px] font-mono text-emerald-400 border border-slate-800 truncate" id="node1Output">
+                    <div class="bg-slate-900/90 p-1.5 rounded text-[10px] font-mono text-emerald-400 border border-slate-800 truncate" id="node1Output">
                         +254 712 101 201
                     </div>
                 </div>
 
-                <!-- Node 2: Shielding Coil (Blinding) -->
-                <div id="circuitNode2" class="circuit-node bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
+                <!-- Step 2: Local Blinding Coil -->
+                <div id="circuitNode2" onclick="openStepModal(2)" class="circuit-node bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex flex-col justify-between">
                     <div>
-                        <div class="flex items-center justify-between mb-2">
-                            <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-500/20 text-purple-400 border border-purple-500/30">Node 2</span>
-                            <span id="node2Status" class="text-[11px] font-mono text-slate-500">READY</span>
+                        <div class="flex items-center justify-between mb-1.5">
+                            <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 border border-purple-500/30">Step 2</span>
+                            <span id="node2Status" class="text-[10px] font-mono text-slate-500">READY</span>
                         </div>
-                        <h4 class="text-xs font-bold text-white mb-1">🌀 Shielding Coil</h4>
-                        <p class="text-[11px] text-slate-400 leading-tight mb-2">Tablet seals number in locked carbon envelope.</p>
+                        <h4 class="text-xs font-bold text-white mb-0.5">🌀 Blinding Coil</h4>
+                        <p class="text-[10px] text-slate-400 leading-tight mb-2">Local scalar multiplier: B = r · P</p>
                     </div>
-                    <div class="bg-slate-900/90 p-2 rounded text-[11px] font-mono text-purple-400 border border-slate-800 truncate" id="node2Output">
-                        B = r * HashToGroup(x)
+                    <div class="bg-slate-900/90 p-1.5 rounded text-[10px] font-mono text-purple-400 border border-slate-800 truncate" id="node2Output">
+                        B = r·P (RAM Shredded)
                     </div>
                 </div>
 
-                <!-- Node 3: The Notary (HSM) -->
-                <div id="circuitNode3" class="circuit-node bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
+                <!-- Step 3: Blind Notary HSM -->
+                <div id="circuitNode3" onclick="openStepModal(3)" class="circuit-node bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex flex-col justify-between">
                     <div>
-                        <div class="flex items-center justify-between mb-2">
-                            <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">Node 3</span>
-                            <span id="node3Status" class="text-[11px] font-mono text-slate-500">READY</span>
+                        <div class="flex items-center justify-between mb-1.5">
+                            <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">Step 3</span>
+                            <span id="node3Status" class="text-[10px] font-mono text-slate-500">READY</span>
                         </div>
-                        <h4 class="text-xs font-bold text-white mb-1">⚡ Central Notary</h4>
-                        <p class="text-[11px] text-slate-400 leading-tight mb-2">HSM stamps envelope blind without opening it.</p>
+                        <h4 class="text-xs font-bold text-white mb-0.5">⚡ Notary HSM</h4>
+                        <p class="text-[10px] text-slate-400 leading-tight mb-2">Evaluator signs blind: Z = k · B</p>
                     </div>
-                    <div class="bg-slate-900/90 p-2 rounded text-[11px] font-mono text-amber-400 border border-slate-800 truncate" id="node3Output">
-                        Z = k * B + DLEQ Proof
+                    <div class="bg-slate-900/90 p-1.5 rounded text-[10px] font-mono text-amber-400 border border-slate-800 truncate" id="node3Output">
+                        Z = k·B + DLEQ Proof
                     </div>
                 </div>
 
-                <!-- Node 4: Demodulator (Unblinding) -->
-                <div id="circuitNode4" class="circuit-node bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
+                <!-- Step 4: Token Crystal (Unblinding) -->
+                <div id="circuitNode4" onclick="openStepModal(4)" class="circuit-node bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex flex-col justify-between">
                     <div>
-                        <div class="flex items-center justify-between mb-2">
-                            <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-sky-500/20 text-sky-400 border border-sky-500/30">Node 4</span>
-                            <span id="node4Status" class="text-[11px] font-mono text-slate-500">READY</span>
+                        <div class="flex items-center justify-between mb-1.5">
+                            <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-400 border border-sky-500/30">Step 4</span>
+                            <span id="node4Status" class="text-[10px] font-mono text-slate-500">READY</span>
                         </div>
-                        <h4 class="text-xs font-bold text-white mb-1">💎 Token Crystal</h4>
-                        <p class="text-[11px] text-slate-400 leading-tight mb-2">Tablet peels cover, yielding clean token T.</p>
+                        <h4 class="text-xs font-bold text-white mb-0.5">💎 Token Crystal</h4>
+                        <p class="text-[10px] text-slate-400 leading-tight mb-2">Unblinds N = r⁻¹·Z &rarr; Token T</p>
                     </div>
-                    <div class="bg-slate-900/90 p-2 rounded text-[11px] font-mono text-sky-400 border border-slate-800 truncate" id="node4Output">
-                        Canonical Token Derived
+                    <div class="bg-slate-900/90 p-1.5 rounded text-[10px] font-mono text-sky-400 border border-slate-800 truncate" id="node4Output">
+                        Token T Derived
                     </div>
                 </div>
 
-                <!-- Node 5: Smart Relay (PEP Consent Check) -->
-                <div id="circuitNode5" class="circuit-node bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
+                <!-- Step 5: External Deduplication -->
+                <div id="circuitNode5" onclick="openStepModal(5)" class="circuit-node bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex flex-col justify-between">
                     <div>
-                        <div class="flex items-center justify-between mb-2">
-                            <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Node 5</span>
-                            <span id="node5Status" class="text-[11px] font-mono text-slate-500">READY</span>
+                        <div class="flex items-center justify-between mb-1.5">
+                            <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Step 5</span>
+                            <span id="node5Status" class="text-[10px] font-mono text-slate-500">READY</span>
                         </div>
-                        <h4 class="text-xs font-bold text-white mb-1">🎛️ PEP Relay</h4>
-                        <p class="text-[11px] text-slate-400 leading-tight mb-2">Gatekeeper checks: Did farmer grant consent?</p>
+                        <h4 class="text-xs font-bold text-white mb-0.5">📚 Deduplication</h4>
+                        <p class="text-[10px] text-slate-400 leading-tight mb-2">Maps D &rarr; Entity UUID (16.15%)</p>
                     </div>
-                    <div class="bg-slate-900/90 p-2 rounded text-[11px] font-mono border border-slate-800 truncate text-emerald-400" id="node5Output">
+                    <div class="bg-slate-900/90 p-1.5 rounded text-[10px] font-mono text-emerald-400 border border-slate-800 truncate" id="node5Output">
+                        Entity UUID Linked
+                    </div>
+                </div>
+
+                <!-- Step 6: OAN PEP Turnstile -->
+                <div id="circuitNode6" onclick="openStepModal(6)" class="circuit-node bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-1.5">
+                            <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">Step 6</span>
+                            <span id="node6Status" class="text-[10px] font-mono text-slate-500">READY</span>
+                        </div>
+                        <h4 class="text-xs font-bold text-white mb-0.5">🛡️ PEP Turnstile</h4>
+                        <p class="text-[10px] text-slate-400 leading-tight mb-2">In-Memory Check: Is Consent ACTIVE?</p>
+                    </div>
+                    <div class="bg-slate-900/90 p-1.5 rounded text-[10px] font-mono border border-slate-800 truncate text-emerald-400" id="node6Output">
                         Relay Closed (ACTIVE)
                     </div>
                 </div>
 
-                <!-- Node 6: The Lightbulb (Advisory Alert SMS) -->
-                <div id="circuitNode6" class="circuit-node bg-slate-950 p-4 rounded-xl border-2 border-slate-800 flex flex-col items-center justify-center text-center relative overflow-hidden">
-                    <div class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-400 uppercase mb-2">Result</div>
+                <!-- Step 7: Telecom Handset Lightbulb -->
+                <div id="circuitNode7" onclick="openStepModal(7)" class="circuit-node bg-slate-950 p-3.5 rounded-xl border-2 border-slate-800 flex flex-col items-center justify-center text-center relative overflow-hidden">
+                    <div class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 uppercase mb-1">Step 7: Delivery</div>
                     
                     <!-- SVG Animated Lightbulb -->
-                    <div id="bulbWrapper" class="relative my-1">
-                        <svg id="svgBulb" class="w-14 h-14 transition-all duration-500 text-slate-600" viewBox="0 0 24 24" fill="currentColor">
-                            <!-- Bulb Outline & Filament -->
+                    <div id="bulbWrapper" class="relative my-0.5">
+                        <svg id="svgBulb" class="w-12 h-12 transition-all duration-500 text-slate-600" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M12 2C8.13 2 5 5.13 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.87-3.13-7-7-7zm-3 18c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1H9v1z"/>
                         </svg>
                         <div id="bulbGlowCircle" class="absolute inset-0 rounded-full bg-amber-400/20 blur-xl opacity-0 transition-opacity duration-500 pointer-events-none"></div>
                     </div>
 
-                    <h4 id="bulbLabel" class="text-xs font-bold text-slate-400 mt-2">LIGHTBULB OFF</h4>
-                    <p id="bulbSubtext" class="text-[10px] text-slate-500 mt-0.5 leading-tight">Awaiting circuit trigger...</p>
+                    <h4 id="bulbLabel" class="text-[11px] font-bold text-slate-400 mt-1">LIGHTBULB OFF</h4>
+                    <p id="bulbSubtext" class="text-[9px] text-slate-500 leading-tight">Farmer 2G Phone</p>
                 </div>
             </div>
 
             <!-- Circuit Real-Time Explanation Banner -->
-            <div id="circuitBanner" class="p-4 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-4 transition-all">
+            <div id="circuitBanner" class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-4 transition-all">
                 <div class="flex items-center gap-3">
                     <span id="bannerBadge" class="text-lg">💡</span>
                     <div>
-                        <h4 id="bannerTitle" class="text-sm font-bold text-white">Circuit Standing By</h4>
-                        <p id="bannerDesc" class="text-xs text-slate-400 mt-0.5">Click 'FLIP SWITCH ON' above or select any Quick Scenario to see the live current flow through each cryptographic stage.</p>
+                        <h4 id="bannerTitle" class="text-xs font-bold text-white">Circuit Standing By</h4>
+                        <p id="bannerDesc" class="text-[11px] text-slate-400 mt-0.5">Click 'FLIP SWITCH ON' above or select any Quick Scenario to see the live current flow through each cryptographic stage.</p>
                     </div>
                 </div>
                 <div id="circuitBreakerIndicator" class="hidden text-xs font-bold font-mono px-3 py-1.5 rounded-lg bg-rose-500/20 text-rose-400 border border-rose-500/30 animate-pulse">
@@ -243,16 +346,18 @@
             </div>
         </div>
 
-        <!-- Section 1: Detailed Interactive Form & Level-by-Level Execution Visualizer -->
+        <!-- ==================================================================== -->
+        <!-- SECTION 1: DETAILED INTERACTIVE FORM & LEVEL-BY-LEVEL EXECUTION      -->
+        <!-- ==================================================================== -->
         <div class="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 shadow-xl">
             <div class="flex flex-wrap items-center justify-between pb-4 mb-5 border-b border-slate-800 gap-3">
                 <div>
                     <h2 class="text-base font-bold text-white flex items-center gap-2">
                         <span class="h-2.5 w-2.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
-                        1. Interactive Farmer Mobile Number Tester (Live VOPRF Pipeline)
+                        Interactive Farmer Mobile Number Tester (Live Pipeline Execution)
                     </h2>
                     <p class="text-xs text-slate-400 mt-0.5">
-                        Type any Kenyan mobile number. The client normalises to E.164, blinds the scalar point, queries the HSM Evaluator, derives canonical token T, and registers or deduplicates in the Registry.
+                        Test registration, PEP enforcement, or USSD opt-out using actual OAN Kenya partner credentials.
                     </p>
                 </div>
                 <div class="flex items-center gap-2">
@@ -273,11 +378,11 @@
                         class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-emerald-400 font-mono font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none">
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-slate-300 mb-1">Provider / Partner</label>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">OAN Kenya Partner</label>
                     <select id="inputPartner" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:ring-2 focus:ring-emerald-500 focus:outline-none">
-                        <option value="test_partner_a" selected>One Acre Fund (A)</option>
-                        <option value="test_partner_b">KTDA Tea Advisory (B)</option>
-                        <option value="test_partner_c">DigiFarm Safaricom (C)</option>
+                        <option value="test_partner_a" selected>SunCulture (Solar & Crop Inputs)</option>
+                        <option value="test_partner_b">DigiCow (Livestock & Dairy Health)</option>
+                        <option value="test_partner_c">KENAFF (Farmer Federation)</option>
                     </select>
                 </div>
                 <div>
@@ -320,11 +425,11 @@
                     <span>&rarr;</span>
                 </button>
                 <button onclick="executePEPCheck()" class="px-4 py-2 bg-sky-700 hover:bg-sky-600 text-white rounded-lg text-xs font-bold transition flex items-center gap-2">
-                    <span>2. Test Advisory Delivery (PEP Check)</span>
+                    <span>2. Test Advisory Delivery (PEP Turnstile)</span>
                     <span>&rarr;</span>
                 </button>
                 <button onclick="executeConsentWithdraw()" class="px-4 py-2 bg-rose-800 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-2">
-                    <span>3. Withdraw Consent (Opt-Out)</span>
+                    <span>3. Withdraw Consent (USSD Opt-Out)</span>
                     <span>&rarr;</span>
                 </button>
             </div>
@@ -338,17 +443,246 @@
                     <span id="traceEntityBadge" class="text-xs font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300"></span>
                 </div>
                 <div id="levelsGrid" class="grid grid-cols-1 md:grid-cols-5 gap-3">
-                    <!-- Populated dynamically with Level 1 to Level 5 cards -->
+                    <!-- Populated dynamically with Level cards -->
                 </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- ==================================================================== -->
+    <!-- DUAL-LENS INSPECTOR MODAL                                            -->
+    <!-- ==================================================================== -->
+    <div id="stepModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 relative">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div class="flex items-center gap-2">
+                    <span id="modalStepBadge" class="text-xs font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">Step 1</span>
+                    <h3 id="modalTitle" class="text-base font-bold text-white">Input Normalization & Blinding</h3>
+                </div>
+                <button onclick="closeStepModal()" class="text-slate-400 hover:text-white text-lg font-bold p-1">&times;</button>
+            </div>
+
+            <!-- Tab Switcher -->
+            <div class="flex border-b border-slate-800 gap-2">
+                <button id="tabTechBtn" onclick="switchModalTab('tech')" class="tab-btn active px-3 py-1.5 text-xs font-bold border-b-2 transition">
+                    🔬 Deep-Tech Lens (Equations & Primitives)
+                </button>
+                <button id="tabBizBtn" onclick="switchModalTab('biz')" class="tab-btn px-3 py-1.5 text-xs font-bold border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition">
+                    💼 Executive Business Lens (Plain English)
+                </button>
+            </div>
+
+            <!-- Tab Content -->
+            <div id="modalTechContent" class="space-y-3 text-xs">
+                <!-- Injected via JS -->
+            </div>
+            <div id="modalBizContent" class="space-y-3 text-xs hidden">
+                <!-- Injected via JS -->
+            </div>
+
+            <div class="pt-3 border-t border-slate-800 flex justify-end">
+                <button onclick="closeStepModal()" class="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold">
+                    Close Inspector
+                </button>
             </div>
         </div>
     </div>
 
+    <!-- Footer -->
+    <footer class="border-t border-slate-800 py-4 px-6 text-center text-xs text-slate-500">
+        Open AgriNet Kenya Digital Public Infrastructure &bull; Privacy-Preserving RFC 9497 VOPRF Engine &bull; KDPA 2019 Certified
+    </footer>
+
     <script>
         let lastRegisteredEntityId = null;
-        let isCircuitActive = false;
 
-        // Load Preset Scenarios
+        // Step Information Database for Dual-Lens Modal
+        const stepDetails = {
+            1: {
+                title: "Step 1: Input Normalization & Local Blinding (B = r · P)",
+                badge: "Step 1 &bull; Partner Edge",
+                badgeColor: "bg-blue-500/20 text-blue-400 border border-blue-500/30",
+                tech: `
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 font-mono text-[11px] space-y-1.5 text-slate-300">
+                        <div><strong class="text-emerald-400">Canonical Normalization:</strong> E.164 string format (+254 712 345 678)</div>
+                        <div><strong class="text-purple-400">Domain Separation:</strong> x = LP("oan-phone-dedup-v1") || LP("ke-pilot-v3") || LP(phone)</div>
+                        <div><strong class="text-sky-400">Hash-to-Curve:</strong> P = HashToGroup(x) on secp256k1 (256-bit prime-order curve)</div>
+                        <div><strong class="text-amber-400">Scalar Blinding:</strong> Random scalar r &larr; [1, Order-1]; Blinded Element B = r &middot; P</div>
+                        <div class="text-rose-400 font-bold">&rarr; Plaintext phone shredded from RAM immediately. Only B leaves device.</div>
+                    </div>
+                `,
+                biz: `
+                    <div class="bg-slate-950 p-3.5 rounded-lg border border-slate-800 text-[11px] space-y-2 text-slate-300 leading-relaxed">
+                        <p><strong class="text-emerald-400">The Steel Lockbox Metaphor:</strong> Imagine the farmer's phone number is written on a piece of paper. The field tablet places that paper inside a heavy steel lockbox and locks it with a secret key (the random number r).</p>
+                        <p><strong class="text-sky-400">Why It Matters to Business:</strong> The phone number NEVER travels over the public internet, cellular towers, or OAN cloud servers in readable form. Even if an attacker intercepts the transmission, they see only scrambled mathematical noise.</p>
+                        <p><strong class="text-amber-400">KDPA Compliance:</strong> Complies with Section 31 Data Protection Principles by enforcing edge-side anonymization at source.</p>
+                    </div>
+                `
+            },
+            2: {
+                title: "Step 2: Blind Evaluation by Notary HSM (Z = k · B)",
+                badge: "Step 2 &bull; External CloudHSM",
+                badgeColor: "bg-purple-500/20 text-purple-400 border border-purple-500/30",
+                tech: `
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 font-mono text-[11px] space-y-1.5 text-slate-300">
+                        <div><strong class="text-purple-400">Endpoint:</strong> POST /v1/evaluations (Payload: 33-byte compressed Point B)</div>
+                        <div><strong class="text-amber-400">Master Secret k:</strong> 256-bit scalar held in isolated Hardware Security Module (KMS)</div>
+                        <div><strong class="text-sky-400">Evaluation:</strong> Evaluated Point Z = k &middot; B</div>
+                        <div><strong class="text-emerald-400">Zero-Knowledge DLEQ:</strong> Proof = DLEQ(G, K, B, Z) proving log_G(K) == log_B(Z) == k</div>
+                        <div class="text-slate-400">&rarr; Evaluator signs without knowing what is inside. Immune to offline rainbow tables.</div>
+                    </div>
+                `,
+                biz: `
+                    <div class="bg-slate-950 p-3.5 rounded-lg border border-slate-800 text-[11px] space-y-2 text-slate-300 leading-relaxed">
+                        <p><strong class="text-purple-400">The Blind Notary Metaphor:</strong> The tablet presents the locked box to an independent government notary. The notary has an official embossing stamp (the secret key k) and stamps the outside of the box.</p>
+                        <p><strong class="text-sky-400">Zero-Knowledge Guarantee:</strong> The Notary certifies the identity without ever opening the box or knowing whose number was stamped. The Notary holds zero personal data.</p>
+                        <p><strong class="text-rose-400">Immunity to Leaks:</strong> Unlike legacy password hashes, there is NO shared key to steal. An attacker cannot pre-calculate numbers offline; the HSM rate-limits all queries.</p>
+                    </div>
+                `
+            },
+            3: {
+                title: "Step 3: Unblinding & Canonical Token Derivation",
+                badge: "Step 3 &bull; Partner Edge RAM",
+                badgeColor: "bg-amber-500/20 text-amber-400 border border-amber-500/30",
+                tech: `
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 font-mono text-[11px] space-y-1.5 text-slate-300">
+                        <div><strong class="text-sky-400">Proof Verification:</strong> Client verifies DLEQ zero-knowledge proof against Public Key K</div>
+                        <div><strong class="text-emerald-400">Modular Inverse:</strong> Client computes r⁻¹ mod CurveOrder</div>
+                        <div><strong class="text-amber-400">Unblinding Math:</strong> N = r⁻¹ &middot; Z = r⁻¹ &middot; (k &middot; r &middot; P) = k &middot; P (r cancels out!)</div>
+                        <div><strong class="text-purple-400">Token T:</strong> HMAC-SHA512(N, LP("Finalize") || x) &rarr; Canonical 64-byte Token</div>
+                        <div><strong class="text-blue-400">Storage Digest D:</strong> HMAC-SHA256(SERVER_KEY, Token T)</div>
+                    </div>
+                `,
+                biz: `
+                    <div class="bg-slate-950 p-3.5 rounded-lg border border-slate-800 text-[11px] space-y-2 text-slate-300 leading-relaxed">
+                        <p><strong class="text-sky-400">The Digital Fingerprint:</strong> The tablet uses its secret key to unlock the outer lockbox. Inside lies an immutable, crystal-clear digital token (T).</p>
+                        <p><strong class="text-emerald-400">The Magic of Math:</strong> If SunCulture enters the phone in Kakamega, and DigiCow enters the same phone in Nyeri, <strong>both derive the exact same Token T</strong> down to the last character without ever sharing customer lists!</p>
+                        <p><strong class="text-amber-400">Commercial Independence:</strong> Competing agribusinesses collaborate without exposing sensitive commercial customer databases.</p>
+                    </div>
+                `
+            },
+            4: {
+                title: "Step 4: External Registry Deduplication & Attribution",
+                badge: "Step 4 &bull; External Registry DB",
+                badgeColor: "bg-sky-500/20 text-sky-400 border border-sky-500/30",
+                tech: `
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 font-mono text-[11px] space-y-1.5 text-slate-300">
+                        <div><strong class="text-sky-400">Lookup:</strong> SELECT entity_id FROM token_alias WHERE digest_d = :D</div>
+                        <div><strong class="text-emerald-400">Collision-Free Entity:</strong> If exists &rarr; return UUID; Else &rarr; create fresh UUID</div>
+                        <div><strong class="text-amber-400">Attribution Decoupling:</strong> Records partner role ("onboarder" vs "contributor")</div>
+                        <div class="text-slate-400">&rarr; Preserves 16.15% overlap attribution without corrupting person identity.</div>
+                    </div>
+                `,
+                biz: `
+                    <div class="bg-slate-950 p-3.5 rounded-lg border border-slate-800 text-[11px] space-y-2 text-slate-300 leading-relaxed">
+                        <p><strong class="text-emerald-400">The Anonymous National Ledger:</strong> The external ledger checks if this digital token has been seen before.</p>
+                        <p><strong class="text-sky-400">Preventing Double Subsidies:</strong> If SunCulture registers a farmer in March and DigiCow registers them in October, the system records <strong>1 human being</strong> with 2 active programs.</p>
+                        <p><strong class="text-amber-400">Fair Attribution:</strong> SunCulture is credited as the original "onboarder," while DigiCow is credited as a "contributor."</p>
+                    </div>
+                `
+            },
+            5: {
+                title: "Step 5: Provider-Scoped Consent Governance (KDPA 2019)",
+                badge: "Step 5 &bull; External Consent DB",
+                badgeColor: "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30",
+                tech: `
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 font-mono text-[11px] space-y-1.5 text-slate-300">
+                        <div><strong class="text-emerald-400">Scoped Model:</strong> farmer_consent (entity_id, partner_id, purpose, status)</div>
+                        <div><strong class="text-amber-400">Mutable States:</strong> ACTIVE &bull; WITHDRAWN &bull; PENDING</div>
+                        <div><strong class="text-rose-400">USSD *384# Opt-Out:</strong> Transitions status to WITHDRAWN without deleting entity_id</div>
+                        <div class="text-slate-400">&rarr; 100% statutory compliance under Section 32(6) of Kenya Data Protection Act.</div>
+                    </div>
+                `,
+                biz: `
+                    <div class="bg-slate-950 p-3.5 rounded-lg border border-slate-800 text-[11px] space-y-2 text-slate-300 leading-relaxed">
+                        <p><strong class="text-emerald-400">The Individual Light Switch:</strong> A farmer has an independent switch for every agribusiness.</p>
+                        <p><strong class="text-sky-400">Preventing Accidental Spoilage:</strong> If a farmer cancels marketing SMS from SunCulture, their veterinary disease alerts from DigiCow stay ON. Farmers never lose critical alerts by mistake.</p>
+                        <p><strong class="text-rose-400">Legal Audit Trail:</strong> Every opt-out is recorded with an immutable timestamp for regulatory audits by the ODPC.</p>
+                    </div>
+                `
+            },
+            6: {
+                title: "Step 6: OAN Core Advisory Dispatch & PEP Turnstile",
+                badge: "Step 6 &bull; OAN Network Border",
+                badgeColor: "bg-indigo-500/20 text-indigo-400 border border-indigo-500/30",
+                tech: `
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 font-mono text-[11px] space-y-1.5 text-slate-300">
+                        <div><strong class="text-indigo-400">PEP Query:</strong> GET /v1/consent/check?entity_id=...&on_behalf_of_partner_id=...</div>
+                        <div><strong class="text-emerald-400">High-Speed Cache:</strong> Evaluated in-memory in &lt;0.05 milliseconds</div>
+                        <div><strong class="text-sky-400">Async Audit:</strong> Decoupled AsyncAuditWorker enqueues audit logs without slowing dispatch</div>
+                        <div class="text-slate-400">&rarr; ALLOW (HTTP 200) or BLOCK (HTTP 403 Forbidden). Zero database lockups.</div>
+                    </div>
+                `,
+                biz: `
+                    <div class="bg-slate-950 p-3.5 rounded-lg border border-slate-800 text-[11px] space-y-2 text-slate-300 leading-relaxed">
+                        <p><strong class="text-indigo-400">The Automated Security Turnstile:</strong> Before any advisory SMS leaves OAN, it hits this security gate.</p>
+                        <p><strong class="text-emerald-400">Sub-Millisecond Speed:</strong> Verifies 50,000 farmers in seconds during emergency pest or flood alert broadcasts.</p>
+                        <p><strong class="text-rose-400">Financial Protection:</strong> If a farmer opted out, the turnstile drops the message immediately. Zero telecom billing is incurred.</p>
+                    </div>
+                `
+            },
+            7: {
+                title: "Step 7: Telecom Shortcode Delivery (The Lightbulb Powers ON)",
+                badge: "Step 7 &bull; Safaricom / 2G Handset",
+                badgeColor: "bg-amber-500/20 text-amber-400 border border-amber-500/30",
+                tech: `
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 font-mono text-[11px] space-y-1.5 text-slate-300">
+                        <div><strong class="text-amber-400">Egress Route:</strong> Handed off to Africa's Talking / Safaricom bulk SMS gateway</div>
+                        <div><strong class="text-sky-400">GSM Signaling:</strong> Transmitted via SS7 / MAP signaling to mobile subscriber line</div>
+                        <div><strong class="text-emerald-400">Target Device:</strong> Works on 2G feature phones (Nokia 3310, USSD *384#) with no crypto app</div>
+                        <div class="text-slate-400">&rarr; 100% rural Kenyan hardware reach. No smartphone or biometric enclave needed.</div>
+                    </div>
+                `,
+                biz: `
+                    <div class="bg-slate-950 p-3.5 rounded-lg border border-slate-800 text-[11px] space-y-2 text-slate-300 leading-relaxed">
+                        <p><strong class="text-emerald-400">The Electric Circuit Completes:</strong> Power reaches the filament and the lightbulb illuminates on the dashboard.</p>
+                        <p><strong class="text-amber-400">Farmer Experience:</strong> In rural Kakamega, Farmer1's basic Nokia phone vibrates with the timely alert: <em>"OAN Weather Alert: Heavy rain expected in 24 hours. Cover stored maize harvest."</em></p>
+                        <p><strong class="text-sky-400">Inclusive DPI:</strong> Reaches 70%+ of rural smallholder farmers who cannot afford smartphones or data bundles.</p>
+                    </div>
+                `
+            }
+        };
+
+        function openStepModal(stepNum) {
+            const data = stepDetails[stepNum];
+            if (!data) return;
+
+            document.getElementById("modalTitle").innerText = data.title;
+            const badge = document.getElementById("modalStepBadge");
+            badge.innerHTML = data.badge;
+            badge.className = `text-xs font-bold px-2 py-0.5 rounded ${data.badgeColor}`;
+
+            document.getElementById("modalTechContent").innerHTML = data.tech;
+            document.getElementById("modalBizContent").innerHTML = data.biz;
+
+            switchModalTab('tech');
+            document.getElementById("stepModal").classList.remove("hidden");
+        }
+
+        function closeStepModal() {
+            document.getElementById("stepModal").classList.add("hidden");
+        }
+
+        function switchModalTab(tab) {
+            const techBtn = document.getElementById("tabTechBtn");
+            const bizBtn = document.getElementById("tabBizBtn");
+            const techContent = document.getElementById("modalTechContent");
+            const bizContent = document.getElementById("modalBizContent");
+
+            if (tab === 'tech') {
+                techBtn.className = "tab-btn active px-3 py-1.5 text-xs font-bold border-b-2 transition";
+                bizBtn.className = "tab-btn px-3 py-1.5 text-xs font-bold border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition";
+                techContent.classList.remove("hidden");
+                bizContent.classList.add("hidden");
+            } else {
+                bizBtn.className = "tab-btn active px-3 py-1.5 text-xs font-bold border-b-2 transition";
+                techBtn.className = "tab-btn px-3 py-1.5 text-xs font-bold border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition";
+                bizContent.classList.remove("hidden");
+                techContent.classList.add("hidden");
+            }
+        }
+
+        // Preset Scenarios
         function loadPresetScenario(scenarioKey) {
             const presets = {
                 scenario1: {
@@ -358,8 +692,8 @@
                     gender: "F",
                     purpose: "ADVISORY",
                     role: "onboarder",
-                    title: "Scenario 1: Active Maize Farmer (One Acre Fund)",
-                    desc: "New farmer onboarding. Farmer grants consent. The circuit will complete and the bulb will power ON with full advisory delivery."
+                    title: "Scenario 1: Active Solar Irrigation Farmer (SunCulture)",
+                    desc: "New farmer onboarding. Farmer grants consent. The circuit will complete and the lightbulb will power ON with full advisory delivery."
                 },
                 scenario2: {
                     phone: "+254 712 101 201",
@@ -368,8 +702,8 @@
                     gender: "F",
                     purpose: "ADVISORY",
                     role: "contributor",
-                    title: "Scenario 2: Cross-Provider Overlap (KTDA)",
-                    desc: "Same phone submitted by KTDA. Demonstrates deduplication: resolves to existing Entity UUID without blowing a fuse!"
+                    title: "Scenario 2: Cross-Provider Overlap (DigiCow Dairy)",
+                    desc: "Same phone submitted by DigiCow. Resolves to existing Farmer UUID without disclosing phone numbers across competitors."
                 },
                 scenario3: {
                     phone: "+254 722 202 301",
@@ -378,18 +712,18 @@
                     gender: "M",
                     purpose: "ADVISORY",
                     role: "onboarder",
-                    title: "Scenario 3: Consent Opt-Out (KDPA 2019)",
-                    desc: "Farmer opted out via USSD *384#. Node 5 PEP relay trips open and the lightbulb stays completely DARK."
+                    title: "Scenario 3: Consent Opt-Out (USSD *384# Enforced)",
+                    desc: "Farmer opted out via USSD *384#. Step 6 PEP relay trips OPEN and the lightbulb stays completely DARK."
                 },
                 scenario4: {
                     phone: "+254 733 303 401",
-                    partner: "test_partner_a",
+                    partner: "test_partner_c",
                     county: "032",
                     gender: "F",
                     purpose: "ADVISORY",
                     role: "onboarder",
-                    title: "Scenario 4: Shared Household Nokia Handset",
-                    desc: "Two family members share one phone. Demonstrates how phone-derived identity links co-holders without person confusion."
+                    title: "Scenario 4: KENAFF Federation Cooperative Roster",
+                    desc: "Grassroots farmer federation enrollment. Deterministic token links co-op members safely into national schemes."
                 },
                 scenario5: {
                     phone: "0712 345 678",
@@ -398,8 +732,8 @@
                     gender: "M",
                     purpose: "ADVISORY",
                     role: "onboarder",
-                    title: "Scenario 5: Malformed Phone Number",
-                    desc: "Raw local format entered. Node 1 auto-corrects to E.164 (+254...) before cryptographic blinding."
+                    title: "Scenario 5: Malformed Raw Phone Number Fix",
+                    desc: "Raw local format entered. Step 1 automatically normalizes to E.164 (+254...) before cryptographic blinding."
                 }
             };
 
@@ -421,9 +755,11 @@
         }
 
         function resetCircuitUI() {
-            for (let i = 1; i <= 6; i++) {
+            for (let i = 1; i <= 7; i++) {
                 const node = document.getElementById("circuitNode" + i);
-                node.classList.remove("energized", "tripped");
+                if (node) {
+                    node.classList.remove("energized", "tripped");
+                }
                 const status = document.getElementById("node" + i + "Status");
                 if (status) status.innerText = "READY";
             }
@@ -433,8 +769,8 @@
             document.getElementById("bulbGlowCircle").classList.remove("opacity-100");
             document.getElementById("bulbGlowCircle").classList.add("opacity-0");
             document.getElementById("bulbLabel").innerText = "LIGHTBULB OFF";
-            document.getElementById("bulbLabel").className = "text-xs font-bold text-slate-400 mt-2";
-            document.getElementById("bulbSubtext").innerText = "Awaiting circuit trigger...";
+            document.getElementById("bulbLabel").className = "text-[11px] font-bold text-slate-400 mt-1";
+            document.getElementById("bulbSubtext").innerText = "Farmer 2G Phone";
             document.getElementById("circuitBreakerIndicator").classList.add("hidden");
         }
 
@@ -444,72 +780,76 @@
             resetCircuitUI();
 
             const phone = document.getElementById("inputPhone").value.trim();
-            const partner = document.getElementById("inputPartner").value;
-            const purpose = document.getElementById("inputPurpose").value;
 
-            // Step 1: Energize Node 1 (Switch / Phone Normalization)
+            // Step 1: Input Switch
             document.getElementById("circuitNode1").classList.add("energized");
             document.getElementById("node1Status").innerText = "CLOSED";
             document.getElementById("node1Output").innerText = phone;
-            await new Promise(r => setTimeout(r, 350));
+            await new Promise(r => setTimeout(r, 280));
 
-            // Step 2: Energize Node 2 (Blinding Chamber)
+            // Step 2: Blinding Coil
             document.getElementById("circuitNode2").classList.add("energized");
             document.getElementById("node2Status").innerText = "SHIELDED";
-            document.getElementById("node2Output").innerText = "B = r * P (Raw Phone Shredded)";
-            await new Promise(r => setTimeout(r, 400));
+            document.getElementById("node2Output").innerText = "B = r·P (RAM Shredded)";
+            await new Promise(r => setTimeout(r, 320));
 
-            // Step 3: Energize Node 3 (Central Notary HSM)
+            // Step 3: Notary HSM
             document.getElementById("circuitNode3").classList.add("energized");
             document.getElementById("node3Status").innerText = "SIGNED";
-            document.getElementById("node3Output").innerText = "Z = k*B (ZK Proof Valid)";
-            await new Promise(r => setTimeout(r, 450));
+            document.getElementById("node3Output").innerText = "Z = k·B (Proof Valid)";
+            await new Promise(r => setTimeout(r, 350));
 
-            // Step 4: Energize Node 4 (Demodulator / Final Token Derived)
+            // Step 4: Token Crystal
             document.getElementById("circuitNode4").classList.add("energized");
             document.getElementById("node4Status").innerText = "UNBLINDED";
             document.getElementById("node4Output").innerText = "Token T Crystallized";
-            await new Promise(r => setTimeout(r, 400));
+            await new Promise(r => setTimeout(r, 300));
 
-            // Step 5: Check PEP Gatekeeper at Node 5
+            // Step 5: Deduplication
+            document.getElementById("circuitNode5").classList.add("energized");
+            document.getElementById("node5Status").innerText = "RESOLVED";
+            document.getElementById("node5Output").innerText = "Entity UUID Active";
+            await new Promise(r => setTimeout(r, 300));
+
+            // Step 6 & 7: Check PEP Gatekeeper
             const isOptOutScenario = phone.includes("722 202 301") || phone.includes("722202301");
 
             if (isOptOutScenario) {
-                // BREAKER TRIPS!
-                document.getElementById("circuitNode5").classList.add("tripped");
-                document.getElementById("node5Status").innerText = "TRIPPED";
-                document.getElementById("node5Output").innerText = "Relay Open (WITHDRAWN)";
+                // BREAKER TRIPS AT PEP GATE!
+                document.getElementById("circuitNode6").classList.add("tripped");
+                document.getElementById("node6Status").innerText = "TRIPPED";
+                document.getElementById("node6Output").innerText = "Relay Open (WITHDRAWN)";
                 document.getElementById("circuitBreakerIndicator").classList.remove("hidden");
 
-                document.getElementById("circuitNode6").classList.add("tripped");
+                document.getElementById("circuitNode7").classList.add("tripped");
                 document.getElementById("bulbLabel").innerText = "LIGHTBULB OFF (BLOCKED)";
-                document.getElementById("bulbLabel").className = "text-xs font-bold text-rose-400 mt-2";
-                document.getElementById("bulbSubtext").innerText = "KDPA Section 32: Opt-out enforced. Zero SMS sent!";
+                document.getElementById("bulbLabel").className = "text-[11px] font-bold text-rose-400 mt-1";
+                document.getElementById("bulbSubtext").innerText = "KDPA Opt-Out Enforced";
 
                 document.getElementById("bannerBadge").innerText = "🛑";
                 document.getElementById("bannerTitle").innerText = "Circuit Breaker Tripped: Advisory Blocked";
-                document.getElementById("bannerDesc").innerText = "The Policy Enforcement Point (PEP) detected an active opt-out. The circuit opened immediately, stopping the message from reaching the farmer's handset.";
+                document.getElementById("bannerDesc").innerText = "The Policy Enforcement Point (PEP) detected an active opt-out. The circuit opened immediately, stopping the message before airtime was billed.";
             } else {
-                // CIRCUIT COMPLETES!
-                document.getElementById("circuitNode5").classList.add("energized");
-                document.getElementById("node5Status").innerText = "CLOSED";
-                document.getElementById("node5Output").innerText = "Relay Closed (ACTIVE)";
-
-                // POWER ENTERS LIGHTBULB!
+                // PEP ALLOWS
                 document.getElementById("circuitNode6").classList.add("energized");
+                document.getElementById("node6Status").innerText = "CLOSED";
+                document.getElementById("node6Output").innerText = "Relay Closed (ACTIVE)";
+
+                // Step 7: POWER ENTERS LIGHTBULB!
+                document.getElementById("circuitNode7").classList.add("energized");
                 const bulb = document.getElementById("svgBulb");
                 bulb.classList.remove("text-slate-600");
                 bulb.classList.add("text-amber-400", "bulb-lit");
                 document.getElementById("bulbGlowCircle").classList.remove("opacity-0");
                 document.getElementById("bulbGlowCircle").classList.add("opacity-100");
 
-                document.getElementById("bulbLabel").innerText = "💡 LIGHTBULB ON (ALLOWED)";
-                document.getElementById("bulbLabel").className = "text-xs font-bold text-emerald-400 mt-2 animate-pulse";
-                document.getElementById("bulbSubtext").innerText = "SMS Advisory Delivered to Farmer Handset!";
+                document.getElementById("bulbLabel").innerText = "💡 LIGHTBULB ON";
+                document.getElementById("bulbLabel").className = "text-[11px] font-bold text-emerald-400 mt-1 animate-pulse";
+                document.getElementById("bulbSubtext").innerText = "SMS Advisory Delivered!";
 
                 document.getElementById("bannerBadge").innerText = "✨";
                 document.getElementById("bannerTitle").innerText = "Circuit Complete: Advisory Alert Delivered";
-                document.getElementById("bannerDesc").innerText = "Current flowed through all cryptographic nodes without exposing personal data. Farmer consent verified active. The alert safely illuminated the bulb!";
+                document.getElementById("bannerDesc").innerText = "Current flowed through all 7 nodes without exposing personal data. Farmer consent verified active. The alert safely illuminated the bulb!";
             }
 
             btn.innerText = "FLIP SWITCH ON";
