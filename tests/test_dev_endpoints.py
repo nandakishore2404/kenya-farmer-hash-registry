@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 import pytest
 from app.config import settings
 from app.models import Farmer, PartnerLink
@@ -11,7 +12,8 @@ def test_requirements_versions_are_strictly_pinned():
     """
     requirements.txt must pin exact versions (==) without loose >= ranges.
     """
-    with open("requirements.txt", "r", encoding="utf-8") as f:
+    req_path = Path(__file__).resolve().parent.parent / "requirements.txt"
+    with open(req_path, "r", encoding="utf-8") as f:
         lines = [line.strip() for line in f if line.strip() and not line.startswith("#")]
 
     assert len(lines) > 0

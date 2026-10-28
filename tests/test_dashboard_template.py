@@ -1,4 +1,5 @@
 import re
+from pathlib import Path
 from html.parser import HTMLParser
 import pytest
 
@@ -20,7 +21,8 @@ def test_dashboard_template_divs_are_balanced():
     """
     app/templates/dashboard.html must have balanced opening and closing <div> tags.
     """
-    with open("app/templates/dashboard.html", "r", encoding="utf-8") as f:
+    template_path = Path(__file__).resolve().parent.parent / "app" / "templates" / "dashboard.html"
+    with open(template_path, "r", encoding="utf-8") as f:
         content = f.read()
 
     parser = DivCounterParser()

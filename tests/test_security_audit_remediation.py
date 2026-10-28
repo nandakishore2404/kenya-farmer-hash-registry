@@ -195,7 +195,7 @@ def test_medium_6_pep_authorization_blocks_cross_partner_consent_read(db_session
     with pytest.raises(HTTPException) as exc_a:
         check_consent_policy_enforcement_point(entity_b.entity_id, "ADVISORY", partner=partner_a, db=db_session)
     assert exc_a.value.status_code == 403
-    assert "not authorized" in exc_a.value.detail or "not associated" in exc_a.value.detail
+    assert "not authorized" in exc_a.value.detail or "association" in exc_a.value.detail
 
 def test_medium_9_telemetry_reconciles_without_quarantined_association_inflation(db_session):
     """
@@ -255,14 +255,14 @@ def test_n1_burned_key_reencoding_refused():
 
 def test_n2_secret_not_echoed_in_exception_output():
     """
-    N2: Settings validation failure must NOT leak secret key values in exception text.
+    N2: Settings validation failure must NOT leak secret key values in exception text,
+    and str(), f-string, and %s formatting must NOT reveal cleartext secrets.
     """
     secret_marker = "f1e2d3c4b5a69788"
     secret_k = secret_marker + "112233445566778899aabbccddeeff00" * 2
-    # Ensure it's valid 64-hex
     secret_k = secret_k[:64]
 
-    # Trigger a configuration error (e.g. invalid server key in production)
+    # 1. Trigger a configuration error (e.g. invalid server key in production)
     with pytest.raises(ValueError) as excinfo:
         Settings(
             ENV="production",
@@ -275,6 +275,28 @@ def test_n2_secret_not_echoed_in_exception_output():
     exc_text = str(excinfo.value)
     assert secret_marker not in exc_text
     assert secret_k not in exc_text
+
+    # 2. String, f-string, and %s masking verification: must all return masked asterisks
+    s = Settings(
+        ENV="development",
+        SERVER_KEY="a" * 32,
+        ADMIN_KEY="b" * 32,
+        DASHBOARD_PASSWORD="c" * 16,
+        EVALUATOR_SECRET_K=secret_k
+    )
+    for field_name, real_val in [
+        ("SERVER_KEY", "a" * 32),
+        ("ADMIN_KEY", "b" * 32),
+        ("DASHBOARD_PASSWORD", "c" * 16),
+        ("EVALUATOR_SECRET_K", secret_k)
+    ]:
+        obj = getattr(s, field_name)
+        assert str(obj) == "**********"
+        assert f"{obj}" == "**********"
+        assert ("%s" % obj) == "**********"
+        assert real_val not in str(obj)
+        assert real_val not in f"{obj}"
+        assert real_val not in ("%s" % obj)
 
 def test_n3_evaluator_key_encoding_strict():
     """
@@ -303,15 +325,26 @@ def test_n3_evaluator_key_encoding_strict():
     with pytest.raises(ValueError, match="must be exactly 64 hexadecimal characters"):
         Settings(ENV="development", EVALUATOR_SECRET_K="abcd1234")
 
-def test_n4_internal_service_pep_bypass_and_logging(db_session):
+def test_n8_internal_service_pep_scoped_to_target_partner(db_session):
     """
-    N4: Internal service (is_internal_service=1) can check consent for any farmer entity
-    without requiring a PartnerAssociation, while ordinary unassociated partners receive 403.
-    AuditLog must record PEP checks.
+    N8: Internal service PEP is strictly scoped to the target delivery partner via on_behalf_of_partner_id.
+    Demonstrates:
+      - Farmer registered to both One Acre Fund (Partner A) and KTDA (Partner B).
+      - Farmer withdraws from One Acre Fund; KTDA remains ACTIVE.
+      - Dispatcher querying for One Acre Fund -> BLOCK (allowed=False, status=WITHDRAWN).
+      - Dispatcher querying for KTDA -> ALLOW (allowed=True, status=ACTIVE).
+      - Dispatcher calling with missing on_behalf_of_partner_id -> HTTP 400.
+      - Dispatcher calling with unassociated partner -> HTTP 403.
+      - External partner querying on behalf of someone else -> HTTP 400.
+      - External partner querying without association -> HTTP 403.
+      - AuditLog captures on_behalf_of_partner_id.
     """
     from app.models import AuditLog
-    partner_b = db_session.query(Partner).filter(Partner.partner_id == "test_partner_b").first()
+    from app.routes.consent import withdraw_consent, ConsentWithdrawRequest
+
     partner_a = db_session.query(Partner).filter(Partner.partner_id == "test_partner_a").first()
+    partner_b = db_session.query(Partner).filter(Partner.partner_id == "test_partner_b").first()
+    partner_c = db_session.query(Partner).filter(Partner.partner_id == "test_partner_c").first()
 
     # Create internal service partner
     internal_service = Partner(
@@ -323,40 +356,107 @@ def test_n4_internal_service_pep_bypass_and_logging(db_session):
     )
     db_session.add(internal_service)
 
-    # Create Farmer Entity associated ONLY with Partner B
-    entity_b = FarmerEntity(status="active")
-    db_session.add(entity_b)
+    # Create Farmer Entity associated with BOTH Partner A and Partner B
+    entity = FarmerEntity(status="active")
+    db_session.add(entity)
     db_session.flush()
 
-    assoc_b = PartnerAssociation(
-        entity_id=entity_b.entity_id,
-        partner_id="test_partner_b",
-        role="onboarder",
-        status="active"
+    assoc_a = PartnerAssociation(entity_id=entity.entity_id, partner_id="test_partner_a", role="onboarder", status="active")
+    assoc_b = PartnerAssociation(entity_id=entity.entity_id, partner_id="test_partner_b", role="contributor", status="active")
+    db_session.add_all([assoc_a, assoc_b])
+
+    # Capture consent under BOTH Partner A and Partner B
+    cap_a = ConsentCaptureRequest(entity_id=entity.entity_id, purpose="ADVISORY")
+    capture_consent(cap_a, partner=partner_a, db=db_session)
+
+    cap_b = ConsentCaptureRequest(entity_id=entity.entity_id, purpose="ADVISORY")
+    capture_consent(cap_b, partner=partner_b, db=db_session)
+
+    # Farmer WITHDRAWS consent from Partner A only
+    with_a = ConsentWithdrawRequest(entity_id=entity.entity_id, purpose="ADVISORY", reason="Farmer opted out via USSD")
+    withdraw_consent(with_a, partner=partner_a, db=db_session)
+
+    # 1. Partner A checking directly -> BLOCK
+    chk_direct_a = check_consent_policy_enforcement_point(entity.entity_id, "ADVISORY", partner=partner_a, db=db_session)
+    assert chk_direct_a.allowed is False
+    assert chk_direct_a.status == "WITHDRAWN"
+
+    # 2. OAN Dispatcher querying on behalf of Partner A -> MUST BE BLOCK!
+    chk_disp_a = check_consent_policy_enforcement_point(
+        entity.entity_id, "ADVISORY", on_behalf_of_partner_id="test_partner_a", partner=internal_service, db=db_session
     )
-    db_session.add(assoc_b)
+    assert chk_disp_a.allowed is False
+    assert chk_disp_a.status == "WITHDRAWN"
 
-    # Capture consent under Partner B
-    cap_req = ConsentCaptureRequest(entity_id=entity_b.entity_id, purpose="ADVISORY")
-    capture_consent(cap_req, partner=partner_b, db=db_session)
+    # 3. OAN Dispatcher querying on behalf of Partner B -> ALLOW!
+    chk_disp_b = check_consent_policy_enforcement_point(
+        entity.entity_id, "ADVISORY", on_behalf_of_partner_id="test_partner_b", partner=internal_service, db=db_session
+    )
+    assert chk_disp_b.allowed is True
+    assert chk_disp_b.status == "ACTIVE"
 
-    # 1. Unassociated external partner (Partner A) -> 403 Forbidden
-    with pytest.raises(HTTPException) as exc_a:
-        check_consent_policy_enforcement_point(entity_b.entity_id, "ADVISORY", partner=partner_a, db=db_session)
-    assert exc_a.value.status_code == 403
+    print("\n[N8 TWO-PROVIDER WITHDRAWAL TRACE]")
+    print(f"  Partner A (One Acre Fund) direct check:       allowed={chk_direct_a.allowed}, status='{chk_direct_a.status}' => BLOCK")
+    print(f"  Dispatcher on behalf of Partner A (withdrawn): allowed={chk_disp_a.allowed}, status='{chk_disp_a.status}' => BLOCK")
+    print(f"  Dispatcher on behalf of Partner B (active):    allowed={chk_disp_b.allowed}, status='{chk_disp_b.status}' => ALLOW")
 
-    # 2. Internal service (no association with entity_b) -> 200 OK, allowed=True
-    chk_internal = check_consent_policy_enforcement_point(entity_b.entity_id, "ADVISORY", partner=internal_service, db=db_session)
-    assert chk_internal.allowed is True
-    assert chk_internal.status == "ACTIVE"
+    # 4. Internal service with missing on_behalf_of_partner_id -> 400
+    with pytest.raises(HTTPException) as exc_missing:
+        check_consent_policy_enforcement_point(
+            entity.entity_id, "ADVISORY", on_behalf_of_partner_id=None, partner=internal_service, db=db_session
+        )
+    assert exc_missing.value.status_code == 400
+    assert "must supply 'on_behalf_of_partner_id'" in exc_missing.value.detail
 
-    # 3. Check audit log records PEP check
-    log = db_session.query(AuditLog).filter(
+    # 5. Internal service naming a partner with no association (Partner C) -> 403
+    with pytest.raises(HTTPException) as exc_no_assoc:
+        check_consent_policy_enforcement_point(
+            entity.entity_id, "ADVISORY", on_behalf_of_partner_id="test_partner_c", partner=internal_service, db=db_session
+        )
+    assert exc_no_assoc.value.status_code == 403
+    assert "does not have an active association" in exc_no_assoc.value.detail
+
+    # 6. External partner (Partner A) attempting to query on behalf of Partner B -> 400
+    with pytest.raises(HTTPException) as exc_ext_obh:
+        check_consent_policy_enforcement_point(
+            entity.entity_id, "ADVISORY", on_behalf_of_partner_id="test_partner_b", partner=partner_a, db=db_session
+        )
+    assert exc_ext_obh.value.status_code == 400
+    assert "cannot query on behalf of other partners" in exc_ext_obh.value.detail
+
+    # 7. External partner with no association (Partner C) querying directly -> 403
+    with pytest.raises(HTTPException) as exc_ext_c:
+        check_consent_policy_enforcement_point(
+            entity.entity_id, "ADVISORY", partner=partner_c, db=db_session
+        )
+    assert exc_ext_c.value.status_code == 403
+
+    # 8. Verify AuditLog captures on_behalf_of_partner_id
+    audit_row = db_session.query(AuditLog).filter(
         AuditLog.action == "consent_pep_check",
         AuditLog.partner_id == "oan_advisory_dispatcher",
-        AuditLog.entity_id == entity_b.entity_id
+        AuditLog.on_behalf_of_partner_id == "test_partner_a",
+        AuditLog.entity_id == entity.entity_id
     ).first()
-    assert log is not None
+    assert audit_row is not None
+
+def test_cli_add_partner_internal_service(capsys):
+    """
+    N9: cli.py add-partner with --internal-service sets is_internal_service=1.
+    """
+    from app.cli import add_partner
+    from app.database import SessionLocal
+
+    partner_id = f"test_internal_{uuid.uuid4().hex[:6]}"
+    add_partner(partner_id=partner_id, name="Test Internal Service", is_internal_service=True)
+    captured = capsys.readouterr()
+    assert "Internal Service (e.g. OAN Advisory Dispatcher / Beckn BPP)" in captured.out
+
+    db = SessionLocal()
+    p = db.query(Partner).filter(Partner.partner_id == partner_id).first()
+    assert p is not None
+    assert p.is_internal_service == 1
+    db.close()
 
 def test_n7_templates_path_is_absolute():
     """

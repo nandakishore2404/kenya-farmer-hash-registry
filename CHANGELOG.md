@@ -4,6 +4,42 @@ All notable changes to the **Kenya Farmer Hash Registry** project will be docume
 
 ---
 
+## [1.4.2] - 2026-10-28 (Audit Round 5: PEP Consent Scoping & Secret Masking Enforcement)
+
+### Security - Critical Remediations
+- **Scoped Internal-Service PEP via `on_behalf_of_partner_id` (N8 - Release Blocker):**
+  - **Vulnerability:** When an internal service queried `/v1/consent/check`, the query previously checked if *any* active consent existed for the entity and purpose, ignoring provider attribution. In cross-provider setups (16.17% overlap), if a farmer opted out from One Acre Fund but remained active under KTDA, the central advisory dispatcher was returned `ALLOW` for One Acre Fund messages, violating KDPA consent withdrawal requirements.
+  - **Fix:**
+    1. Added `on_behalf_of_partner_id` parameter to `GET /v1/consent/check` and `GET /v1/consent/status`.
+    2. Internal services (`is_internal_service = 1`) **must** supply `on_behalf_of_partner_id` (rejected with `HTTP 400 Bad Request` if omitted).
+    3. Validates that the target partner exists, is active, and possesses an active `PartnerAssociation` with the farmer entity (`HTTP 403 Forbidden` if unassociated).
+    4. Evaluates consent strictly scoped to `(entity_id, target_partner_id, purpose)`; completely removed the any-active-consent query fallback.
+    5. External delivery partners are locked to their authenticated identity (`HTTP 400 Bad Request` if attempting to pass a different `on_behalf_of_partner_id`).
+    6. Added `on_behalf_of_partner_id` column to `AuditLog` via migration `0006_add_on_behalf_of_partner_id_to_audit_log.py`.
+    7. Aligned `capture_consent` and `withdraw_consent` to strictly scope records by `partner_id`.
+  - **Regression Test:** Added `test_n8_internal_service_pep_scoped_to_target_partner` validating BLOCK for withdrawn provider and ALLOW for active provider.
+
+- **Enforced Strict Masking on `SensitiveStr` (N2 - Reopened):**
+  - **Issue:** `SensitiveStr` previously overrode `__str__` to return `self.get_secret_value()`, causing `str()`, f-strings, and `"%s"` interpolation to reveal plaintext secrets.
+  - **Remediation:** Removed `__str__` override. `str()`, f-strings, `"%s"`, and `repr()` all consistently output masked asterisks (`'**********'`). Plaintext secrets are strictly accessible only via explicit `.get_secret_value()` at authorized call sites (`app/hashing.py`, `app/auth.py`, `app/routes/evaluator.py`, `app/routes/dashboard.py`).
+  - **Regression Test:** Updated `test_n2_secret_not_echoed_in_exception_output_and_masked_in_str` to verify that `str()`, `f"{s}"`, and `"%s" % s` output `'**********'` and contain no secret substrings.
+
+### Administration & Portability
+- **CLI Flag for Internal Services (N9):**
+  - Added `--internal-service` flag to `app/cli.py add-partner` to provision exchange-level dispatcher credentials without direct database manipulation.
+  - Updated `list-partners` output to display partner type (`Internal` vs `External`).
+  - **Regression Test:** Added `test_cli_add_partner_internal_service`.
+- **Portable Test Path Resolution (N11):**
+  - Updated `tests/test_dashboard_template.py` and `tests/test_dev_endpoints.py` to resolve file paths relative to `__file__`, ensuring tests succeed from any non-root working directory.
+
+### Performance & Regulatory Notes
+- **Audit Logging on PEP Path (N10):**
+  - Synchronous `AuditLog` writes on `/v1/consent/check` are active for audit trail completeness during pilot operations. For high-volume production broadcast campaigns (50k+ SMS alerts), asynchronous background queueing or Kafka/Redis audit ingestion is recommended.
+- **KDPA 2019 Per-Partner vs Global Consent Model (N5):**
+  - The N8 implementation enforces strict provider-scoped consent. If Safaricom / DPO counsel determines that KDPA Section 32 mandates a global opt-out kill-switch across all registered providers, the model will be adjusted per legal direction.
+
+---
+
 ## [1.4.1] - 2026-10-28 (Audit Round 4: PEP Dispatcher Usability, Key Sanitization & Path Portability)
 
 ### Security & Access Control

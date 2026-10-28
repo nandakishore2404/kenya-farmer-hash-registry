@@ -182,6 +182,7 @@ class AuditLog(Base):
     partner_id = Column(String(50), nullable=False)
     farmer_id = Column(Integer, nullable=True)  # Strictly farmer_id or NULL; NEVER store incoming hash or phone!
     entity_id = Column(String(36), nullable=True)
+    on_behalf_of_partner_id = Column(String(50), nullable=True)  # Set when internal service checks PEP on behalf of a delivery partner
     at = Column(DateTime, default=utcnow, nullable=False)
 
 

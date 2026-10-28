@@ -15,7 +15,7 @@ def test_dashboard_with_invalid_credentials_returns_401(client):
 
 def test_dashboard_with_correct_credentials_returns_200(client):
     user = settings.DASHBOARD_USER
-    pwd = settings.DASHBOARD_PASSWORD
+    pwd = settings.DASHBOARD_PASSWORD.get_secret_value() if hasattr(settings.DASHBOARD_PASSWORD, "get_secret_value") else str(settings.DASHBOARD_PASSWORD)
     token = base64.b64encode(f"{user}:{pwd}".encode("utf-8")).decode("ascii")
     headers = {"Authorization": f"Basic {token}"}
     res = client.get("/dashboard", headers=headers)

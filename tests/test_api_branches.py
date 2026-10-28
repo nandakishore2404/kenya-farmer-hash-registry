@@ -218,7 +218,7 @@ def test_admin_lookup(client):
 def test_dashboard_page(client):
     import base64
     user = settings.DASHBOARD_USER
-    pwd = settings.DASHBOARD_PASSWORD
+    pwd = settings.DASHBOARD_PASSWORD.get_secret_value() if hasattr(settings.DASHBOARD_PASSWORD, "get_secret_value") else str(settings.DASHBOARD_PASSWORD)
     token = base64.b64encode(f"{user}:{pwd}".encode("utf-8")).decode("ascii")
     headers = {"Authorization": f"Basic {token}"}
     res = client.get("/dashboard", headers=headers)

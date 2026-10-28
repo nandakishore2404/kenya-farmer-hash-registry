@@ -44,12 +44,11 @@ COMMITTED_INSECURE_KEYS = {
 
 class SensitiveStr(SecretStr):
     """
-    Secret string that prevents disclosure in exceptions, logs, and repr formats,
-    while supporting essential string operations without leaking secrets.
+    Secret string that prevents disclosure in exceptions, logs, str(), f-strings, and repr() formats.
+    Both str() and repr() display masked asterisks '**********'.
+    To retrieve the plaintext value for intentional cryptographic or authentication operations,
+    callers must explicitly invoke .get_secret_value().
     """
-    def __str__(self):
-        return self.get_secret_value()
-
     def encode(self, *args, **kwargs):
         return self.get_secret_value().encode(*args, **kwargs)
 

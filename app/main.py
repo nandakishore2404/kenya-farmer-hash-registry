@@ -48,7 +48,7 @@ def init_db():
         print(" Test Console:    http://localhost:8008/dev/console")
         print(" Health Check:    http://localhost:8008/health")
         print("-" * 72)
-        print(f" Dashboard Login: {settings.DASHBOARD_USER} / {settings.DASHBOARD_PASSWORD}")
+        print(f" Dashboard Login: {settings.DASHBOARD_USER} / [configured via DASHBOARD_PASSWORD]")
         print("-" * 72)
         print(" Seeded Test Partners:")
         print("   1. ID: test_partner_a (Test Partner A)")
