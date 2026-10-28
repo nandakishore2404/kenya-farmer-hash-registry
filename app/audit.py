@@ -78,9 +78,10 @@ class AsyncAuditWorker:
             self._thread.start()
 
     def stop(self, flush: bool = True):
-        self._stop_event.set()
         if flush:
             self.flush()
+        self._stop_event.set()
+        self.resume()
         with self._lock:
             if self._thread and self._thread.is_alive():
                 self._thread.join(timeout=3.0)
@@ -122,22 +123,29 @@ class AsyncAuditWorker:
         self._queue.put(event)
         self.total_enqueued += 1
 
-    def flush(self, timeout: float = 5.0):
+    def flush(self, timeout: Optional[float] = 5.0):
         """
-        Blocks until all currently enqueued audit events have been processed by the worker.
+        Blocks until all currently enqueued audit events have been persisted or spilled.
+        Uses queue.Queue task_done() / unfinished_tasks synchronization with timeout.
         """
         self.resume()
-        start_time = time.time()
-        while not self._queue.empty():
-            time.sleep(0.02)
-            if time.time() - start_time > timeout:
-                break
-        # Allow brief moment for final database commit
-        time.sleep(0.05)
+        if timeout is None:
+            self._queue.join()
+            return
+
+        with self._queue.all_tasks_done:
+            end_time = time.time() + timeout
+            while self._queue.unfinished_tasks:
+                remaining = end_time - time.time()
+                if remaining <= 0:
+                    break
+                self._queue.all_tasks_done.wait(remaining)
 
     def _run_worker(self):
         while not self._stop_event.is_set() or not self._queue.empty():
             self._pause_event.wait()
+            if self._stop_event.is_set() and self._queue.empty():
+                break
             batch: List[AuditEvent] = []
             try:
                 item = self._queue.get(timeout=self.poll_interval)
@@ -151,9 +159,11 @@ class AsyncAuditWorker:
                 continue
 
             if batch:
-                self._persist_batch_with_retry(batch)
-                for _ in batch:
-                    self._queue.task_done()
+                try:
+                    self._persist_batch_with_retry(batch)
+                finally:
+                    for _ in batch:
+                        self._queue.task_done()
 
     def _persist_batch_with_retry(self, batch: List[AuditEvent]):
         max_retries = 3

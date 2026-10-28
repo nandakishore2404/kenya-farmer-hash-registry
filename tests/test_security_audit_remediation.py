@@ -568,4 +568,61 @@ def test_n10_audit_worker_retries_and_dead_letter_spill(tmp_path):
     assert record["entity_id"] == "entity_fail_test"
     assert record["on_behalf_of_partner_id"] == "test_partner_b"
 
+def test_n10_audit_worker_retry_recovery(tmp_path, db_session):
+    """
+    N10: Prove that transient DB failures recover via exponential backoff
+    and succeed on subsequent attempts without spilling to dead-letter storage.
+    """
+    from app.audit import AsyncAuditWorker
+    from app.models import AuditLog
+    from tests.conftest import TestingSessionLocal
+
+    dead_letter_file = str(tmp_path / "test_recovery_dead_letter.jsonl")
+    attempts = 0
+
+    def flaky_session_factory():
+        nonlocal attempts
+        attempts += 1
+        if attempts <= 2:
+            raise RuntimeError(f"Simulated transient database connection failure #{attempts}")
+        return TestingSessionLocal()
+
+    worker = AsyncAuditWorker(
+        session_factory=flaky_session_factory,
+        poll_interval=0.01,
+        dead_letter_path=dead_letter_file
+    )
+    worker.start()
+
+    test_now = datetime.now(timezone.utc)
+    worker.enqueue(
+        action="consent_pep_check",
+        partner_id="test_partner_a",
+        entity_id="entity_retry_success",
+        on_behalf_of_partner_id="test_partner_b",
+        at=test_now
+    )
+
+    worker.flush(timeout=5.0)
+    worker.stop(flush=True)
+
+    # 1. Assert attempts occurred (2 failures + 1 success)
+    assert attempts >= 3, f"Expected at least 3 attempts (2 failures + 1 success), got {attempts}"
+
+    # 2. Assert event was NOT spilled to dead-letter file
+    if os.path.exists(dead_letter_file):
+        with open(dead_letter_file, "r", encoding="utf-8") as f:
+            lines = [line.strip() for line in f if line.strip()]
+        assert len(lines) == 0, "No records should be spilled to dead-letter when retry succeeds"
+
+    # 3. Assert event was successfully persisted in the database
+    row = db_session.query(AuditLog).filter(
+        AuditLog.action == "consent_pep_check",
+        AuditLog.entity_id == "entity_retry_success"
+    ).first()
+    assert row is not None, "AuditLog row must be persisted in database after retry recovery"
+    assert row.partner_id == "test_partner_a"
+    assert row.on_behalf_of_partner_id == "test_partner_b"
+
+
 

@@ -4,6 +4,18 @@ All notable changes to the **Kenya Farmer Hash Registry** project will be docume
 
 ---
 
+## [1.4.4] - 2026-10-28 (Audit Round 7: AsyncAuditWorker Flush Synchronization & Retry Recovery - N10 Follow-up)
+
+### Performance & Reliability Hardening
+- **Tightened `AsyncAuditWorker.flush()` Synchronization (N10 Follow-up):**
+  - **Issue:** `flush()` previously polled `self._queue.empty()` followed by a 50ms sleep buffer. Because worker batches dequeue items before calling `_persist_batch_with_retry`, `queue.empty()` could return `True` while database persistence was still in flight under higher batch sizes or latency.
+  - **Remediation:** Replaced queue polling with deterministic condition synchronization via `queue.Queue`'s `all_tasks_done` / `unfinished_tasks` mechanism. In the worker loop, `task_done()` is invoked in a `try...finally` block strictly after the batch is persisted to the database or spilled to dead-letter storage. `flush(timeout=5.0)` now blocks until persistence work is truly complete while honoring the timeout parameter to prevent indefinite deadlocks if database I/O hangs.
+  - **Shutdown Safety:** Updated `stop(flush=True)` to flush pending tasks before triggering the worker stop event.
+- **Retry-Recovery Test Coverage (N10 Follow-up):**
+  - Added regression test `test_n10_audit_worker_retry_recovery` in `tests/test_security_audit_remediation.py`. Uses a flaky session factory that fails on the first 2 attempts and succeeds on the 3rd attempt, verifying that transient failures recover through backoff, persist the audit record to the database, and do not leak into dead-letter storage.
+
+---
+
 ## [1.4.3] - 2026-10-28 (Audit Round 6: Decoupled PEP Audit Logging - N10)
 
 ### Performance & Security - High-Volume Dispatch Hardening
