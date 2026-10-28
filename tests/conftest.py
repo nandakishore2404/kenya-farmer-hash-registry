@@ -46,6 +46,8 @@ def setup_test_db():
     
     yield
     
+    from app.audit import audit_worker
+    audit_worker.flush()
     Base.metadata.drop_all(bind=test_engine)
 
 @pytest.fixture

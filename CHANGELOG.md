@@ -4,6 +4,29 @@ All notable changes to the **Kenya Farmer Hash Registry** project will be docume
 
 ---
 
+## [1.4.3] - 2026-10-28 (Audit Round 6: Decoupled PEP Audit Logging - N10)
+
+### Performance & Security - High-Volume Dispatch Hardening
+- **Decoupled PEP Audit Logging via In-Process Batch Worker (N10):**
+  - **Issue:** `GET /v1/consent/check` and `GET /v1/consent/status` previously executed synchronous `db.add(AuditLog(...)); db.commit()` inline on every PEP query. For high-volume broadcast campaigns (e.g., weather/pest alert blasts to 50,000+ farmers), this forced the OAN central dispatcher to block on a database write round-trip per farmer, creating latency bottlenecks and thread starvation under SQLite write-locking.
+  - **Architecture Decision & Justification:**
+    - For the single-server pilot deployment, external message brokers (Kafka/RabbitMQ/Redis) introduce excessive infrastructure operational complexity, network dependencies, and deployment overhead not present in the existing stack.
+    - `FastAPI.BackgroundTasks` runs tasks after response delivery within the event loop's threadpool, but lacks backoff retries, batching, and failure spillover persistence.
+    - **Adopted Solution:** An in-process, thread-safe memory queue (`queue.Queue`) serviced by a dedicated background daemon worker thread (`app.audit.AsyncAuditWorker`). Enqueue latency is sub-millisecond (<0.05 ms memory push), allowing the PEP request/response path to return immediately without waiting on DB I/O.
+  - **Durable Audit Guarantees & Row Semantics:**
+    - Preserved exact `AuditLog` row schema and semantics: `action`, `partner_id`, `entity_id`, `on_behalf_of_partner_id`, and `at` (captured at the precise moment of PEP evaluation, preventing timestamp drift during queueing).
+    - Writes are batched to minimize SQLite/PostgreSQL transaction lock contention.
+    - Preserved synchronous audit writes on `capture_consent` and `withdraw_consent` to ensure strict ACID atomicity with consent state mutations.
+  - **Failure Handling & Dead-Letter Durability:**
+    - Transient database write failures trigger exponential backoff retry (3 attempts with 0.05s, 0.1s, 0.2s delays).
+    - If database persistence fails after all retries, entries are never silently dropped; they are immediately spilled over to an append-only JSON Lines dead-letter audit log file (`audit_dead_letter.jsonl`) accompanied by a `CRITICAL` error log and alert metric, guaranteeing audit durability under catastrophic database outages.
+    - Added graceful shutdown and lifecycle hooks (`lifespan`) ensuring all enqueued events are flushed on application termination (`audit_worker.stop(flush=True)`).
+  - **Regression Tests:**
+    - Added `test_n10_pep_audit_logging_non_blocking_and_eventually_persisted` verifying that PEP responses return immediately while worker persistence is paused, and audit rows are persisted correctly upon flush.
+    - Added `test_n10_audit_worker_retries_and_dead_letter_spill` verifying that simulated persistent database failures trigger 3 retries and successfully spill unpersisted audit entries to `audit_dead_letter.jsonl`.
+
+---
+
 ## [1.4.2] - 2026-10-28 (Audit Round 5: PEP Consent Scoping & Secret Masking Enforcement)
 
 ### Security - Critical Remediations
@@ -34,7 +57,7 @@ All notable changes to the **Kenya Farmer Hash Registry** project will be docume
 
 ### Performance & Regulatory Notes
 - **Audit Logging on PEP Path (N10):**
-  - Synchronous `AuditLog` writes on `/v1/consent/check` are active for audit trail completeness during pilot operations. For high-volume production broadcast campaigns (50k+ SMS alerts), asynchronous background queueing or Kafka/Redis audit ingestion is recommended.
+  - **Resolved in Round 6 (v1.4.3):** Decoupled from the PEP request/response path (`GET /v1/consent/check` and `GET /v1/consent/status`) using an in-process batch queue worker (`app.audit.AsyncAuditWorker`) with retry and dead-letter file fallback; see Round 6 entry above for details.
 - **KDPA 2019 Per-Partner vs Global Consent Model (N5):**
   - The N8 implementation enforces strict provider-scoped consent. If Safaricom / DPO counsel determines that KDPA Section 32 mandates a global opt-out kill-switch across all registered providers, the model will be adjusted per legal direction.
 

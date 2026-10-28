@@ -64,7 +64,10 @@ def init_db():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    from app.audit import audit_worker
+    audit_worker.start()
     yield
+    audit_worker.stop(flush=True)
 
 app = FastAPI(
     title=settings.APP_NAME,

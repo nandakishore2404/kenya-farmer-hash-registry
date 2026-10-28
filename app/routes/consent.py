@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.auth import authenticate_partner
 from app.models import FarmerEntity, FarmerConsent, AuditLog, Partner, PartnerAssociation
+from app.audit import audit_worker
 
 router = APIRouter(prefix="/v1/consent", tags=["consent"])
 
@@ -178,16 +179,15 @@ def check_consent_policy_enforcement_point(
         FarmerConsent.purpose == purpose
     ).first()
 
-    # Log PEP check in AuditLog
+    # Decoupled, non-blocking PEP audit logging (N10)
     now = datetime.now(timezone.utc)
-    db.add(AuditLog(
+    audit_worker.enqueue(
         action="consent_pep_check",
         partner_id=partner.partner_id,
         entity_id=entity_id,
         on_behalf_of_partner_id=target_partner_id if is_internal else None,
         at=now
-    ))
-    db.commit()
+    )
 
     if not consent or consent.status != "ACTIVE":
         return ConsentCheckResponse(
@@ -253,15 +253,15 @@ def get_consent_status(
         FarmerConsent.purpose == purpose
     ).first()
 
+    # Decoupled, non-blocking PEP audit logging (N10)
     now = datetime.now(timezone.utc)
-    db.add(AuditLog(
+    audit_worker.enqueue(
         action="consent_pep_check",
         partner_id=partner.partner_id,
         entity_id=entity_id,
         on_behalf_of_partner_id=target_partner_id if is_internal else None,
         at=now
-    ))
-    db.commit()
+    )
 
     if not consent:
         raise HTTPException(status_code=404, detail="No consent record found")

@@ -13,6 +13,7 @@ import os
 import json
 import base64
 import uuid
+from datetime import datetime, timezone
 import pytest
 from fastapi import HTTPException
 
@@ -432,6 +433,8 @@ def test_n8_internal_service_pep_scoped_to_target_partner(db_session):
     assert exc_ext_c.value.status_code == 403
 
     # 8. Verify AuditLog captures on_behalf_of_partner_id
+    from app.audit import audit_worker
+    audit_worker.flush()
     audit_row = db_session.query(AuditLog).filter(
         AuditLog.action == "consent_pep_check",
         AuditLog.partner_id == "oan_advisory_dispatcher",
@@ -467,4 +470,102 @@ def test_n7_templates_path_is_absolute():
     searchpath = templates.env.loader.searchpath[0]
     assert os.path.isabs(searchpath)
     assert searchpath.endswith(os.path.join("app", "templates"))
+
+def test_n10_pep_audit_logging_non_blocking_and_eventually_persisted(db_session):
+    """
+    N10: PEP consent checks (/v1/consent/check) must be non-blocking:
+    (a) The PEP HTTP response returns immediately without waiting on database write I/O.
+    (b) The audit log row still ends up durably persisted and correct shortly after.
+    """
+    from app.audit import audit_worker
+    from app.models import AuditLog
+
+    partner_a = db_session.query(Partner).filter(Partner.partner_id == "test_partner_a").first()
+
+    # Create farmer entity and partner association
+    entity = FarmerEntity(status="active")
+    db_session.add(entity)
+    db_session.flush()
+
+    assoc = PartnerAssociation(entity_id=entity.entity_id, partner_id="test_partner_a", status="active")
+    db_session.add(assoc)
+
+    # Capture active consent
+    cap = ConsentCaptureRequest(entity_id=entity.entity_id, purpose="ADVISORY")
+    capture_consent(cap, partner=partner_a, db=db_session)
+
+    # 1. Pause the background audit worker
+    audit_worker.pause()
+
+    # 2. Call the PEP endpoint - it MUST return immediately
+    res = check_consent_policy_enforcement_point(entity.entity_id, "ADVISORY", partner=partner_a, db=db_session)
+    assert res.allowed is True
+    assert res.status == "ACTIVE"
+
+    # 3. PROOF OF (a): While worker is paused, no AuditLog row exists yet in DB
+    unpersisted_row = db_session.query(AuditLog).filter(
+        AuditLog.action == "consent_pep_check",
+        AuditLog.entity_id == entity.entity_id
+    ).first()
+    assert unpersisted_row is None, "PEP check must not block on synchronous database writes"
+
+    # 4. Resume worker and flush queue
+    audit_worker.resume()
+    audit_worker.flush()
+
+    # 5. PROOF OF (b): The row is durably persisted and correct shortly after
+    persisted_row = db_session.query(AuditLog).filter(
+        AuditLog.action == "consent_pep_check",
+        AuditLog.entity_id == entity.entity_id
+    ).first()
+    assert persisted_row is not None
+    assert persisted_row.partner_id == "test_partner_a"
+    assert persisted_row.on_behalf_of_partner_id is None
+    assert persisted_row.at is not None
+
+def test_n10_audit_worker_retries_and_dead_letter_spill(tmp_path):
+    """
+    N10: When database writes fail, the worker retries and ultimately spills
+    unpersisted audit events to an append-only dead-letter log rather than dropping them.
+    """
+    from app.audit import AsyncAuditWorker, AuditEvent
+
+    dead_letter_file = str(tmp_path / "test_dead_letter.jsonl")
+
+    # Faulty session factory simulating total DB failure
+    def broken_session_factory():
+        raise RuntimeError("Simulated database connection failure")
+
+    worker = AsyncAuditWorker(
+        session_factory=broken_session_factory,
+        poll_interval=0.01,
+        dead_letter_path=dead_letter_file
+    )
+    worker.start()
+
+    # Enqueue test audit event
+    test_now = datetime.now(timezone.utc)
+    worker.enqueue(
+        action="consent_pep_check",
+        partner_id="test_partner_a",
+        entity_id="entity_fail_test",
+        on_behalf_of_partner_id="test_partner_b",
+        at=test_now
+    )
+
+    worker.flush(timeout=3.0)
+    worker.stop(flush=True)
+
+    # Verify dead-letter storage captured the event
+    assert os.path.exists(dead_letter_file), "Dead-letter log file must be created on persistent DB failure"
+    with open(dead_letter_file, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+
+    assert len(lines) >= 1
+    record = json.loads(lines[0])
+    assert record["action"] == "consent_pep_check"
+    assert record["partner_id"] == "test_partner_a"
+    assert record["entity_id"] == "entity_fail_test"
+    assert record["on_behalf_of_partner_id"] == "test_partner_b"
+
 
