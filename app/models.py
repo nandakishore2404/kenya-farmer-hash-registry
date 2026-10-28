@@ -171,6 +171,7 @@ class Partner(Base):
     name = Column(String(100), nullable=False)
     api_key_hash = Column(String(64), nullable=False, unique=True, index=True)
     active = Column(Integer, default=1, nullable=False)  # 1 for active, 0 for disabled
+    is_internal_service = Column(Integer, default=0, nullable=False)  # 1 for internal service (e.g. OAN Advisory Dispatcher), 0 for external partner
 
 
 class AuditLog(Base):

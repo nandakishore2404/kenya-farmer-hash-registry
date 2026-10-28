@@ -4,6 +4,42 @@ All notable changes to the **Kenya Farmer Hash Registry** project will be docume
 
 ---
 
+## [1.4.1] - 2026-10-28 (Audit Round 4: PEP Dispatcher Usability, Key Sanitization & Path Portability)
+
+### Security & Access Control
+- **Internal Service Role for OAN Advisory Dispatcher (N4):**
+  - **Issue:** The PEP consent endpoint `/v1/consent/check` strictly required an active `PartnerAssociation` between the caller and the farmer entity. However, OAN's central advisory dispatch service (Beckn BPP) dispatches weather, advisory, and pest notifications across all partners and maintains no per-farmer association rows, causing all advisory dispatches to fail closed with HTTP 403.
+  - **Remediation:** Added `is_internal_service` column on `Partner` (migration `0005_add_is_internal_service_to_partner.py`). Internal services (`is_internal_service = 1`) bypass the `PartnerAssociation` requirement and verify if any active consent exists for the target entity and purpose. All PEP checks continue to be immutably recorded in `AuditLog` (`action="consent_pep_check"`). External partners remain strictly isolated and receive 403 when attempting unassociated cross-tenant lookups.
+  - **Regression Test:** Added `test_n4_internal_service_pep_bypass_and_logging`.
+
+- **Burned-Key Blocklist Re-Encoding Bypass Remediation (N1):**
+  - **Issue:** `app/config.py` previously compared `EVALUATOR_SECRET_K` as a string against `COMMITTED_INSECURE_KEYS`, but `load_evaluator_key()` reduces scalars modulo $N$. An attacker passing `hex(burned + N_ORDER)` was accepted and evaluated to the burned key.
+  - **Remediation:** Evaluator secret scalar is converted to an integer modulo curve order $N$ and compared directly against `BURNED_SCALAR_INTS`. Both plain burned hex strings and re-encoded values `hex(burned + N_ORDER)` are strictly refused at startup.
+  - **Regression Test:** Added `test_n1_burned_key_reencoding_refused`.
+
+- **Prevent Secret Echoing in Pydantic Validation Exceptions (N2):**
+  - **Issue:** When startup settings validation failed, Pydantic's default model validator formatted the raw settings dictionary in `input_value`, leaking secrets into exception output and stderr.
+  - **Remediation:** Introduced `SensitiveStr(SecretStr)` for `EVALUATOR_SECRET_K`, `SERVER_KEY`, `ADMIN_KEY`, and `DASHBOARD_PASSWORD`. Extracted security checks outside Pydantic's internal model validator into explicit `__init__` validation, ensuring that raised `ValueError` exceptions never render the configuration dictionary or secret substrings.
+  - **Regression Test:** Added `test_n2_secret_not_echoed_in_exception_output`.
+
+- **Strict Scalar Encoding Validation (N3):**
+  - **Issue:** `load_evaluator_key()` had identical `int(clean_k, 16)` branches, with fallback decimal parsing that could cause decimal scalars from Vault/KMS to parse silently as hexadecimal, creating wrong keys without error.
+  - **Remediation:** Enforced exactly one documented encoding: exactly 64 hexadecimal characters (optional `0x` prefix). Decimal, non-hex, or incorrect-length strings fail immediately with a clear configuration error. Removed dead duplicate branches in `app/routes/evaluator.py` and `prototype_voprf/evaluator/service.py`.
+  - **Regression Test:** Added `test_n3_evaluator_key_encoding_strict`.
+
+### Operational Integrity & Portability
+- **Forward-Only Warning on Migration 0004 (N6):**
+  - Added explicit docstring warning on `alembic/versions/0004_deprecate_compromised_v1_epoch.py :: downgrade()`, documenting that rollback is forward-only and unsafe once new transactions have been written post-upgrade because it unconditionally resets `quarantined_v1_epoch` statuses and re-conflates `legacy-hmac-v1`.
+- **Absolute Jinja2Templates Directory Resolution (N7):**
+  - Updated `app/routes/dashboard.py` to resolve templates directory relative to `__file__` (`Path(__file__).resolve().parent.parent / "templates"`), ensuring dashboard and test execution succeed regardless of working directory.
+  - **Regression Test:** Added `test_n7_templates_path_is_absolute`.
+
+### Regulatory & Governance Note (N5)
+- **KDPA 2019 Partner-Scoped vs Global Consent Opt-Out:**
+  - Consent withdrawal is currently scoped per-partner. Whether an opt-out via USSD against one provider must legally trigger global opt-out across all registered providers under Kenya Data Protection Act (KDPA) 2019 is flagged for Safaricom/DPO legal counsel review. Existing per-partner semantics have been preserved without unilateral modification.
+
+---
+
 ## [1.4.0] - 2026-10-28 (Audit Round 3: Key Custody, Authorization & Test Isolation Remediation)
 
 ### Security - Critical Remediations

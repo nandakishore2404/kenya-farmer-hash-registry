@@ -68,6 +68,16 @@ def upgrade() -> None:
     )
 
 def downgrade() -> None:
+    """
+    WARNING: FORWARD-ONLY MIGRATION NOTICE
+    downgrade() is provided for schema rollback symmetry in fresh or staging environments,
+    but is UNSAFE once new production data has been written post-upgrade.
+    Specifically:
+      - It resets all 'quarantined_v1_epoch' rows to 'active' without distinguishing entities
+        or associations that may have been quarantined later for other operational reasons.
+      - It re-conflates 'legacy-hmac-v1' back to the generic 'v1' key_id namespace.
+    Do NOT execute this downgrade against a live production database with post-upgrade transactions.
+    """
     op.execute(
         "UPDATE partner_association SET status = 'active' WHERE status = 'quarantined_v1_epoch'"
     )

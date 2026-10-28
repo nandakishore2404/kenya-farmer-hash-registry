@@ -151,7 +151,8 @@ def authenticate_admin(
     """
     Authenticates administrative requests using the server ADMIN_KEY.
     """
-    if not x_admin_key or not hmac.compare_digest(x_admin_key.strip(), settings.ADMIN_KEY.strip()):
+    admin_key = settings.ADMIN_KEY.get_secret_value() if hasattr(settings.ADMIN_KEY, "get_secret_value") else str(settings.ADMIN_KEY)
+    if not x_admin_key or not hmac.compare_digest(x_admin_key.strip(), admin_key.strip()):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid or missing admin key"

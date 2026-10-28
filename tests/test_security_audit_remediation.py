@@ -229,3 +229,142 @@ def test_medium_9_telemetry_reconciles_without_quarantined_association_inflation
     assert metrics["deduplicated_farmer_identities"] == 1
     assert metrics["cross_provider_overlap_records"] == 1
     assert metrics["cross_provider_overlap_rate_pct"] == 50.0
+
+def test_n1_burned_key_reencoding_refused():
+    """
+    N1: Burned-key blocklist cannot be bypassed by scalar reduction or re-encoding.
+    Asserts both plain burned value and hex(burned + N_ORDER) are refused at startup.
+    """
+    from app.config import N_ORDER
+    burned_v2 = 0x5d8a9f1b2c3e4d5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f91
+    re_encoded_burned = hex(burned_v2 + N_ORDER)
+
+    # 1. Re-encoded burned value mod N_ORDER must be refused
+    with pytest.raises(ValueError, match="known burned or insecure placeholder"):
+        Settings(
+            ENV="development",
+            EVALUATOR_SECRET_K=re_encoded_burned
+        )
+
+    # 2. Plain burned hex string must be refused
+    with pytest.raises(ValueError, match="known burned or insecure placeholder"):
+        Settings(
+            ENV="development",
+            EVALUATOR_SECRET_K=hex(burned_v2)
+        )
+
+def test_n2_secret_not_echoed_in_exception_output():
+    """
+    N2: Settings validation failure must NOT leak secret key values in exception text.
+    """
+    secret_marker = "f1e2d3c4b5a69788"
+    secret_k = secret_marker + "112233445566778899aabbccddeeff00" * 2
+    # Ensure it's valid 64-hex
+    secret_k = secret_k[:64]
+
+    # Trigger a configuration error (e.g. invalid server key in production)
+    with pytest.raises(ValueError) as excinfo:
+        Settings(
+            ENV="production",
+            SERVER_KEY="short",
+            ADMIN_KEY="b" * 32,
+            DATABASE_URL="postgresql://user:pass@localhost:5432/db",
+            DASHBOARD_PASSWORD="c" * 16,
+            EVALUATOR_SECRET_K=secret_k
+        )
+    exc_text = str(excinfo.value)
+    assert secret_marker not in exc_text
+    assert secret_k not in exc_text
+
+def test_n3_evaluator_key_encoding_strict():
+    """
+    N3: Evaluator secret scalar accepts strictly 64 hex characters (optional 0x prefix).
+    Decimal encodings and malformed strings are rejected.
+    """
+    valid_64_hex = "e8c7b6a5d4c3b2a1908f7e6d5c4b3a2918273645e5d4c3b2a10987654321abcd"
+
+    # Accepted: 64 hex characters
+    s1 = Settings(ENV="development", EVALUATOR_SECRET_K=valid_64_hex)
+    assert s1.EVALUATOR_SECRET_K is not None
+
+    # Accepted: 64 hex characters with 0x prefix
+    s2 = Settings(ENV="development", EVALUATOR_SECRET_K="0x" + valid_64_hex)
+    assert s2.EVALUATOR_SECRET_K is not None
+
+    # Rejected: Decimal string
+    with pytest.raises(ValueError, match="must be exactly 64 hexadecimal characters"):
+        Settings(ENV="development", EVALUATOR_SECRET_K="123456789012345678901234567890")
+
+    # Rejected: Non-hex malformed string
+    with pytest.raises(ValueError, match="must be exactly 64 hexadecimal characters"):
+        Settings(ENV="development", EVALUATOR_SECRET_K="g" * 64)
+
+    # Rejected: Wrong length
+    with pytest.raises(ValueError, match="must be exactly 64 hexadecimal characters"):
+        Settings(ENV="development", EVALUATOR_SECRET_K="abcd1234")
+
+def test_n4_internal_service_pep_bypass_and_logging(db_session):
+    """
+    N4: Internal service (is_internal_service=1) can check consent for any farmer entity
+    without requiring a PartnerAssociation, while ordinary unassociated partners receive 403.
+    AuditLog must record PEP checks.
+    """
+    from app.models import AuditLog
+    partner_b = db_session.query(Partner).filter(Partner.partner_id == "test_partner_b").first()
+    partner_a = db_session.query(Partner).filter(Partner.partner_id == "test_partner_a").first()
+
+    # Create internal service partner
+    internal_service = Partner(
+        partner_id="oan_advisory_dispatcher",
+        name="OAN Advisory Dispatcher (Beckn BPP)",
+        api_key_hash="dummy_internal_hash_" + str(uuid.uuid4())[:8],
+        active=1,
+        is_internal_service=1
+    )
+    db_session.add(internal_service)
+
+    # Create Farmer Entity associated ONLY with Partner B
+    entity_b = FarmerEntity(status="active")
+    db_session.add(entity_b)
+    db_session.flush()
+
+    assoc_b = PartnerAssociation(
+        entity_id=entity_b.entity_id,
+        partner_id="test_partner_b",
+        role="onboarder",
+        status="active"
+    )
+    db_session.add(assoc_b)
+
+    # Capture consent under Partner B
+    cap_req = ConsentCaptureRequest(entity_id=entity_b.entity_id, purpose="ADVISORY")
+    capture_consent(cap_req, partner=partner_b, db=db_session)
+
+    # 1. Unassociated external partner (Partner A) -> 403 Forbidden
+    with pytest.raises(HTTPException) as exc_a:
+        check_consent_policy_enforcement_point(entity_b.entity_id, "ADVISORY", partner=partner_a, db=db_session)
+    assert exc_a.value.status_code == 403
+
+    # 2. Internal service (no association with entity_b) -> 200 OK, allowed=True
+    chk_internal = check_consent_policy_enforcement_point(entity_b.entity_id, "ADVISORY", partner=internal_service, db=db_session)
+    assert chk_internal.allowed is True
+    assert chk_internal.status == "ACTIVE"
+
+    # 3. Check audit log records PEP check
+    log = db_session.query(AuditLog).filter(
+        AuditLog.action == "consent_pep_check",
+        AuditLog.partner_id == "oan_advisory_dispatcher",
+        AuditLog.entity_id == entity_b.entity_id
+    ).first()
+    assert log is not None
+
+def test_n7_templates_path_is_absolute():
+    """
+    N7: Jinja2Templates directory in app/routes/dashboard.py must be resolved to an absolute path.
+    """
+    import os
+    from app.routes.dashboard import templates
+    searchpath = templates.env.loader.searchpath[0]
+    assert os.path.isabs(searchpath)
+    assert searchpath.endswith(os.path.join("app", "templates"))
+

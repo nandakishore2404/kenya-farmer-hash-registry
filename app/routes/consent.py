@@ -128,24 +128,45 @@ def check_consent_policy_enforcement_point(
     Requires partner authentication (or internal service credentials).
     Returns: ALLOW (true) if ACTIVE, BLOCK (false) if WITHDRAWN or missing.
     """
-    # 1. Partner Authorization: Verify caller is associated with this entity
-    assoc = db.query(PartnerAssociation).filter(
-        PartnerAssociation.entity_id == entity_id,
-        PartnerAssociation.partner_id == partner.partner_id,
-        PartnerAssociation.status == "active"
-    ).first()
-    if not assoc:
-        raise HTTPException(
-            status_code=403,
-            detail=f"Forbidden: Partner '{partner.partner_id}' is not authorized to access consent for entity '{entity_id}'."
-        )
+    # 1. Partner Authorization: Verify caller is associated with this entity (bypassed for internal services)
+    is_internal = getattr(partner, "is_internal_service", 0) == 1
+    if not is_internal:
+        assoc = db.query(PartnerAssociation).filter(
+            PartnerAssociation.entity_id == entity_id,
+            PartnerAssociation.partner_id == partner.partner_id,
+            PartnerAssociation.status == "active"
+        ).first()
+        if not assoc:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Forbidden: Partner '{partner.partner_id}' is not authorized to access consent for entity '{entity_id}'."
+            )
 
-    # 2. Scope consent lookup to calling partner
-    consent = db.query(FarmerConsent).filter(
-        FarmerConsent.entity_id == entity_id,
-        FarmerConsent.partner_id == partner.partner_id,
-        FarmerConsent.purpose == purpose
-    ).first()
+    # 2. Scope consent lookup:
+    # Internal service checks if ANY active consent exists for entity and purpose;
+    # Ordinary partner checks partner-scoped consent.
+    if is_internal:
+        consent = db.query(FarmerConsent).filter(
+            FarmerConsent.entity_id == entity_id,
+            FarmerConsent.purpose == purpose,
+            FarmerConsent.status == "ACTIVE"
+        ).first()
+    else:
+        consent = db.query(FarmerConsent).filter(
+            FarmerConsent.entity_id == entity_id,
+            FarmerConsent.partner_id == partner.partner_id,
+            FarmerConsent.purpose == purpose
+        ).first()
+
+    # Log PEP check in AuditLog
+    now = datetime.now(timezone.utc)
+    db.add(AuditLog(
+        action="consent_pep_check",
+        partner_id=partner.partner_id,
+        entity_id=entity_id,
+        at=now
+    ))
+    db.commit()
 
     if not consent or consent.status != "ACTIVE":
         return ConsentCheckResponse(
@@ -169,24 +190,45 @@ def get_consent_status(
     partner: Partner = Depends(authenticate_partner),
     db: Session = Depends(get_db)
 ):
-    # 1. Partner Authorization: Verify caller is associated with this entity
-    assoc = db.query(PartnerAssociation).filter(
-        PartnerAssociation.entity_id == entity_id,
-        PartnerAssociation.partner_id == partner.partner_id,
-        PartnerAssociation.status == "active"
-    ).first()
-    if not assoc:
-        raise HTTPException(
-            status_code=403,
-            detail=f"Forbidden: Partner '{partner.partner_id}' is not authorized to access consent for entity '{entity_id}'."
-        )
+    # 1. Partner Authorization: Verify caller is associated with this entity (bypassed for internal services)
+    is_internal = getattr(partner, "is_internal_service", 0) == 1
+    if not is_internal:
+        assoc = db.query(PartnerAssociation).filter(
+            PartnerAssociation.entity_id == entity_id,
+            PartnerAssociation.partner_id == partner.partner_id,
+            PartnerAssociation.status == "active"
+        ).first()
+        if not assoc:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Forbidden: Partner '{partner.partner_id}' is not authorized to access consent for entity '{entity_id}'."
+            )
 
-    # 2. Scope consent lookup to calling partner
-    consent = db.query(FarmerConsent).filter(
-        FarmerConsent.entity_id == entity_id,
-        FarmerConsent.partner_id == partner.partner_id,
-        FarmerConsent.purpose == purpose
-    ).first()
+    # 2. Scope consent lookup:
+    # Internal service checks if ANY active consent exists for entity and purpose;
+    # Ordinary partner checks partner-scoped consent.
+    if is_internal:
+        consent = db.query(FarmerConsent).filter(
+            FarmerConsent.entity_id == entity_id,
+            FarmerConsent.purpose == purpose,
+            FarmerConsent.status == "ACTIVE"
+        ).first()
+    else:
+        consent = db.query(FarmerConsent).filter(
+            FarmerConsent.entity_id == entity_id,
+            FarmerConsent.partner_id == partner.partner_id,
+            FarmerConsent.purpose == purpose
+        ).first()
+
+    # Log PEP check in AuditLog
+    now = datetime.now(timezone.utc)
+    db.add(AuditLog(
+        action="consent_pep_check",
+        partner_id=partner.partner_id,
+        entity_id=entity_id,
+        at=now
+    ))
+    db.commit()
     if not consent:
         raise HTTPException(status_code=404, detail="No consent record found")
     return {

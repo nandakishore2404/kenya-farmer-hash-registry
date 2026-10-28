@@ -21,6 +21,14 @@ from prototype_voprf.crypto.voprf_engine import (
     N_ORDER
 )
 
+N_ORDER = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
+
+BURNED_SCALARS_HEX = {
+    "7a2f3e1b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f",
+    "5d8a9f1b2c3e4d5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f91",
+}
+BURNED_SCALAR_INTS = {int(h, 16) % N_ORDER for h in BURNED_SCALARS_HEX}
+
 app = FastAPI(title="OAN Kenya VOPRF Independent Evaluator", version="1.0.0")
 
 def load_evaluator_key() -> tuple[str, int, GroupElement]:
@@ -31,14 +39,27 @@ def load_evaluator_key() -> tuple[str, int, GroupElement]:
             "FATAL: EVALUATOR_SECRET_K is required. Must be set via secure environment variable or HSM interface."
         )
     clean_k = raw_k.strip()
-    try:
-        if clean_k.startswith("0x") or clean_k.startswith("0X"):
-            k_val = int(clean_k, 16) % N_ORDER
-        else:
-            k_val = int(clean_k, 16) % N_ORDER
-    except ValueError:
-        k_val = int(clean_k) % N_ORDER
 
+    # Check against burned scalars mod N_ORDER (prevents re-encoding bypass)
+    try:
+        parsed_int = int(clean_k, 16)
+        if (parsed_int % N_ORDER) in BURNED_SCALAR_INTS:
+            raise RuntimeError(
+                "FATAL: EVALUATOR_SECRET_K matches a known burned scalar from public repository history."
+            )
+    except ValueError as e:
+        if "FATAL: EVALUATOR_SECRET_K matches a known burned" in str(e):
+            raise
+
+    # Accept exactly one documented encoding: 64 hex characters, optional 0x prefix
+    hex_k = clean_k[2:] if clean_k.startswith(("0x", "0X")) else clean_k
+    if len(hex_k) != 64 or not all(c in "0123456789abcdefABCDEF" for c in hex_k):
+        raise ValueError(
+            "Evaluator configuration error: EVALUATOR_SECRET_K must be exactly 64 hexadecimal characters "
+            "(optional '0x' prefix). Decimal or other encodings are not accepted."
+        )
+
+    k_val = int(hex_k, 16) % N_ORDER
     if k_val == 0:
         raise RuntimeError("FATAL: EVALUATOR_SECRET_K cannot be zero modulo curve order.")
 

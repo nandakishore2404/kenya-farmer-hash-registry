@@ -16,7 +16,8 @@ def rekey_hash(incoming_hash: str) -> str:
     hash_key = hex(HMAC-SHA256(SERVER_KEY, incoming_hash))
     Store only hash_key. The incoming partner hash is never stored.
     """
-    key = settings.SERVER_KEY.encode("utf-8")
+    server_key = settings.SERVER_KEY.get_secret_value() if hasattr(settings.SERVER_KEY, "get_secret_value") else str(settings.SERVER_KEY)
+    key = server_key.encode("utf-8")
     msg = incoming_hash.strip().lower().encode("utf-8")
     return hmac.new(key, msg, hashlib.sha256).hexdigest()
 
@@ -26,7 +27,8 @@ def compute_voprf_storage_digest(pilot_id: str, key_id: str, token_bytes: bytes)
     D = HMAC-SHA256(SERVER_KEY, LP("oan-registry-v1") || LP(pilot_id) || LP(key_id) || T)
     Protects against database-only leaks: raw token T is never persisted directly.
     """
-    key = settings.SERVER_KEY.encode("utf-8")
+    server_key = settings.SERVER_KEY.get_secret_value() if hasattr(settings.SERVER_KEY, "get_secret_value") else str(settings.SERVER_KEY)
+    key = server_key.encode("utf-8")
     msg = (
         length_prefix("oan-registry-v1")
         + length_prefix(pilot_id)

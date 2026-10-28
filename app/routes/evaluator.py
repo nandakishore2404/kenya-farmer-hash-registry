@@ -12,7 +12,7 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Header, Depends, status
 from pydantic import BaseModel, Field
 
-from app.config import settings
+from app.config import settings, BURNED_SCALAR_INTS
 from app.crypto.voprf import (
     VOPRFEngine,
     GroupElement,
@@ -28,26 +28,47 @@ router = APIRouter(prefix="/v1", tags=["evaluator"])
 def load_evaluator_key() -> tuple[str, int, GroupElement]:
     """
     Loads active Evaluator key epoch and secret scalar k from secure runtime environment.
-    Refuses startup if k is absent or invalid (no literal fallback, no default).
+    Refuses startup if k is absent, invalid, or burned (no literal fallback, no default).
+    Accepts exactly one documented encoding: 64 hexadecimal characters (optional 0x prefix).
     In production SAFIC deployments, k resides in AWS CloudHSM or HashiCorp Vault transit engine.
     """
     key_id = getattr(settings, "EVALUATOR_KEY_ID", "ke-pilot-v3")
     raw_k = getattr(settings, "EVALUATOR_SECRET_K", None) or os.environ.get("EVALUATOR_SECRET_K")
-    if not raw_k or not str(raw_k).strip():
+    if not raw_k:
         raise RuntimeError(
             "FATAL: EVALUATOR_SECRET_K is not set. The VOPRF Evaluator secret key must be "
             "provided via secure runtime environment or CloudHSM / Vault transit. "
             "Startup aborted to prevent unauthenticated/compromised operation."
         )
-    clean_k = str(raw_k).strip()
-    try:
-        if clean_k.startswith("0x") or clean_k.startswith("0X"):
-            k_val = int(clean_k, 16) % N_ORDER
-        else:
-            k_val = int(clean_k, 16) % N_ORDER
-    except ValueError:
-        k_val = int(clean_k) % N_ORDER
+    raw_str = raw_k.get_secret_value() if hasattr(raw_k, "get_secret_value") else str(raw_k)
+    clean_k = raw_str.strip()
+    if not clean_k:
+        raise RuntimeError(
+            "FATAL: EVALUATOR_SECRET_K is not set. The VOPRF Evaluator secret key must be "
+            "provided via secure runtime environment or CloudHSM / Vault transit. "
+            "Startup aborted to prevent unauthenticated/compromised operation."
+        )
 
+    # Check against burned scalars mod N_ORDER (prevents re-encoding bypass)
+    try:
+        parsed_int = int(clean_k, 16)
+        if (parsed_int % N_ORDER) in BURNED_SCALAR_INTS:
+            raise RuntimeError(
+                "FATAL: EVALUATOR_SECRET_K matches a known burned scalar from public repository history."
+            )
+    except ValueError as e:
+        if "FATAL: EVALUATOR_SECRET_K matches a known burned" in str(e):
+            raise
+
+    # Accept exactly one documented encoding: 64 hex characters, optional 0x prefix
+    hex_k = clean_k[2:] if clean_k.startswith(("0x", "0X")) else clean_k
+    if len(hex_k) != 64 or not all(c in "0123456789abcdefABCDEF" for c in hex_k):
+        raise ValueError(
+            "Evaluator configuration error: EVALUATOR_SECRET_K must be exactly 64 hexadecimal characters "
+            "(optional '0x' prefix). Decimal or other encodings are not accepted."
+        )
+
+    k_val = int(hex_k, 16) % N_ORDER
     if k_val == 0:
         raise RuntimeError("FATAL: EVALUATOR_SECRET_K cannot be zero modulo curve order.")
 

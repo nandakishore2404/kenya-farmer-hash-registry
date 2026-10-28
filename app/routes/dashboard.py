@@ -1,4 +1,5 @@
 import hmac
+from pathlib import Path
 from datetime import datetime, timezone
 from collections import defaultdict
 from fastapi import APIRouter, Depends, Request, HTTPException, status
@@ -12,15 +13,17 @@ from app.database import get_db
 from app.models import Farmer, PartnerLink, Partner, FarmerEntity, PartnerAssociation, FarmerConsent
 from app.config import settings
 
+BASE_DIR = Path(__file__).resolve().parent.parent
 router = APIRouter(tags=["dashboard"])
-templates = Jinja2Templates(directory="app/templates")
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 security = HTTPBasic()
 
 def authenticate_dashboard(credentials: HTTPBasicCredentials = Depends(security)):
     correct_user = hmac.compare_digest(credentials.username.encode("utf-8"), settings.DASHBOARD_USER.encode("utf-8"))
     correct_pass = False
     if settings.DASHBOARD_PASSWORD:
-        correct_pass = hmac.compare_digest(credentials.password.encode("utf-8"), settings.DASHBOARD_PASSWORD.encode("utf-8"))
+        dash_pwd = settings.DASHBOARD_PASSWORD.get_secret_value() if hasattr(settings.DASHBOARD_PASSWORD, "get_secret_value") else str(settings.DASHBOARD_PASSWORD)
+        correct_pass = hmac.compare_digest(credentials.password.encode("utf-8"), dash_pwd.encode("utf-8"))
         
     if not (correct_user and correct_pass):
         raise HTTPException(
