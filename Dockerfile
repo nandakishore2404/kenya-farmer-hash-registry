@@ -6,10 +6,13 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /workspace
 
-# Install system dependencies
+# Install system dependencies required for psycopg2 and coincurve (C extensions for secp256k1)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
+    libffi-dev \
+    python3-dev \
+    pkg-config \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
