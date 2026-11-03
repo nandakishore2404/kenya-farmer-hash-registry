@@ -28,6 +28,17 @@ from app.auth import authenticate_partner
 from app.models import Partner, PartnerEvaluationQuota, AuditLog
 from app.database import get_db, SessionLocal
 
+import threading
+
+_PARTNER_QUOTA_LOCKS: Dict[str, threading.Lock] = {}
+_QUOTA_MUTEX = threading.Lock()
+
+def get_partner_quota_lock(partner_id: str) -> threading.Lock:
+    with _QUOTA_MUTEX:
+        if partner_id not in _PARTNER_QUOTA_LOCKS:
+            _PARTNER_QUOTA_LOCKS[partner_id] = threading.Lock()
+        return _PARTNER_QUOTA_LOCKS[partner_id]
+
 router = APIRouter(prefix="/v1", tags=["evaluator"])
 
 def load_evaluator_share():
@@ -188,36 +199,44 @@ def evaluate_blinded_batch(
         close_db = True
 
     try:
-        quota_window_hours = getattr(settings, "PARTNER_QUOTA_WINDOW_HOURS", 24)
-        daily_limit = getattr(settings, "PARTNER_DAILY_QUOTA", 10000)
-        cutoff = now - timedelta(hours=quota_window_hours)
+        partner_lock = get_partner_quota_lock(partner.partner_id)
+        with partner_lock:
+            # 1. Attempt row-level locking on Partner record for multi-worker Postgres deployments
+            try:
+                db.query(Partner).filter(Partner.partner_id == partner.partner_id).with_for_update().first()
+            except Exception:
+                pass
 
-        recent_count = db.query(
-            func.coalesce(func.sum(PartnerEvaluationQuota.batch_size), 0)
-        ).filter(
-            PartnerEvaluationQuota.partner_id == partner.partner_id,
-            PartnerEvaluationQuota.evaluated_at >= cutoff
-        ).scalar() or 0
+            quota_window_hours = getattr(settings, "PARTNER_QUOTA_WINDOW_HOURS", 24)
+            daily_limit = getattr(settings, "PARTNER_DAILY_QUOTA", 10000)
+            cutoff = now - timedelta(hours=quota_window_hours)
 
-        batch_len = len(req.blinded_elements)
-        if recent_count + batch_len > daily_limit:
-            db.add(AuditLog(
-                action="partner_evaluation_quota_exceeded",
+            recent_count = db.query(
+                func.coalesce(func.sum(PartnerEvaluationQuota.batch_size), 0)
+            ).filter(
+                PartnerEvaluationQuota.partner_id == partner.partner_id,
+                PartnerEvaluationQuota.evaluated_at >= cutoff
+            ).scalar() or 0
+
+            batch_len = len(req.blinded_elements)
+            if recent_count + batch_len > daily_limit:
+                db.add(AuditLog(
+                    action="partner_evaluation_quota_exceeded",
+                    partner_id=partner.partner_id,
+                    at=now
+                ))
+                db.commit()
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=f"Partner evaluation quota of {daily_limit} per {quota_window_hours}h exceeded. Anomaly tripwire engaged."
+                )
+
+            db.add(PartnerEvaluationQuota(
                 partner_id=partner.partner_id,
-                at=now
+                evaluated_at=now,
+                batch_size=batch_len
             ))
             db.commit()
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=f"Partner evaluation quota of {daily_limit} per {quota_window_hours}h exceeded. Anomaly tripwire engaged."
-            )
-
-        db.add(PartnerEvaluationQuota(
-            partner_id=partner.partner_id,
-            evaluated_at=now,
-            batch_size=batch_len
-        ))
-        db.commit()
     finally:
         if close_db:
             db.close()
