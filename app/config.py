@@ -8,6 +8,7 @@ N_ORDER = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
 BURNED_SCALARS_HEX = {
     "7a2f3e1b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f",
     "5d8a9f1b2c3e4d5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f91",
+    "5cfa51060880d8d043bf65b215457a97ade09f39b2d00ee6de4083ee4d87c7a8",
 }
 BURNED_SCALAR_INTS = {int(h, 16) % N_ORDER for h in BURNED_SCALARS_HEX}
 
@@ -40,6 +41,8 @@ COMMITTED_INSECURE_KEYS = {
     "7a2f3e1b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f",
     "0x5d8a9f1b2c3e4d5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f91",
     "5d8a9f1b2c3e4d5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f91",
+    "0x5cfa51060880d8d043bf65b215457a97ade09f39b2d00ee6de4083ee4d87c7a8",
+    "5cfa51060880d8d043bf65b215457a97ade09f39b2d00ee6de4083ee4d87c7a8",
 }
 
 class SensitiveStr(SecretStr):
@@ -218,5 +221,18 @@ class Settings(BaseSettings):
             # 5. SEED_TEST_PARTNERS
             if self.SEED_TEST_PARTNERS:
                 raise ValueError("Production configuration error: SEED_TEST_PARTNERS must be False in production.")
+
+            # 6. EVALUATOR_SHARE_K
+            share_str = self.EVALUATOR_SHARE_K.get_secret_value() if self.EVALUATOR_SHARE_K else None
+            if not share_str or not share_str.strip():
+                raise ValueError("Production configuration error: EVALUATOR_SHARE_K is required and cannot be empty.")
+
+            # 7. EVALUATOR_PEER_PUBKEYS
+            if not self.EVALUATOR_PEER_PUBKEYS or not self.EVALUATOR_PEER_PUBKEYS.strip():
+                raise ValueError("Production configuration error: EVALUATOR_PEER_PUBKEYS is required and cannot be empty.")
+
+            # 8. EVALUATOR_AGGREGATE_PUB
+            if not self.EVALUATOR_AGGREGATE_PUB or not self.EVALUATOR_AGGREGATE_PUB.strip():
+                raise ValueError("Production configuration error: EVALUATOR_AGGREGATE_PUB is required and cannot be empty.")
 
 settings = Settings()

@@ -50,11 +50,12 @@ def load_evaluator_share():
 
     raw_share = getattr(settings, "EVALUATOR_SHARE_K", None) or os.environ.get("EVALUATOR_SHARE_K")
     if not raw_share:
-        # Default test share for local development/testing if unset
-        raw_share = "5cfa51060880d8d043bf65b215457a97ade09f39b2d00ee6de4083ee4d87c7a8"
+        raise RuntimeError("FATAL: EVALUATOR_SHARE_K is not set or is empty. Evaluator cannot boot without its secret share.")
 
     raw_str = raw_share.get_secret_value() if hasattr(raw_share, "get_secret_value") else str(raw_share)
     clean_share = raw_str.strip()
+    if not clean_share:
+        raise RuntimeError("FATAL: EVALUATOR_SHARE_K is not set or is empty. Evaluator cannot boot without its secret share.")
 
     hex_share = clean_share[2:] if clean_share.startswith(("0x", "0X")) else clean_share
     if len(hex_share) != 64 or not all(c in "0123456789abcdefABCDEF" for c in hex_share):
@@ -69,13 +70,18 @@ def load_evaluator_share():
     pub_pt = point_mul(share_val, GENERATOR_G.pt)
     pub_elem = GroupElement(pub_pt)
 
+    env = getattr(settings, "ENV", "production") or os.environ.get("ENV", "production")
+    is_prod = str(env).strip().lower() == "production"
+
     # Peer public keys
     peer_str = getattr(settings, "EVALUATOR_PEER_PUBKEYS", None) or os.environ.get("EVALUATOR_PEER_PUBKEYS")
-    if not peer_str:
+    if not peer_str or not peer_str.strip():
+        if is_prod:
+            raise RuntimeError("FATAL: EVALUATOR_PEER_PUBKEYS is required in production environment.")
         peer_str = (
-            "BB+kqC5pFbFv1L9I8MRmTnZHgZUarR4P9xj19RShJhwfJYmv7p7ky34FeklakjJm1Ee/eGGihJRw7XuzzsZuc8c=,"
-            "BPtkkn42JAlT3Ah13aY8vgDs2ENYr1mLcmbEfsubQUW41X2vhxuafZWZLkuF34CkI0vS6bVPp+clsW0nWRgDnqo=,"
-            "BHdfWrtka5uEGxX+5+upLriDzmehz7O6hJ89oOFSqepxBUITvrauE64y3mpGmAAwhf7ray8LPDDzdl+JeWukPz0="
+            "BJ8m3hJug+Y0V7hR3rH84fa+5AIAQsVVaCaDTGfGTp56NzsOk2HZWOyrjGRbykUNlxVSqx24LC9mzf9T2FKm+zU=,"
+            "BLsrheMvOj3EeWaaXImEgn7qplgNfOe0Ds6383CkKMvt67srGKCfMNJQ5aOe5+aagI0F9Yev8/gecI+7pbR1M4E=,"
+            "BL0Geozqg73DQS/sOR+sFyzgpO4YYWS949WCcan5E1JWRbIE4qe/UZXT/gffBoaV22pkmUp4/9d6LqFWareOMXY="
         )
     peer_pubkeys = [k.strip() for k in peer_str.split(",") if k.strip()]
     if len(peer_pubkeys) != 3:
@@ -90,8 +96,10 @@ def load_evaluator_share():
 
     # Aggregate public key K
     agg_b64 = getattr(settings, "EVALUATOR_AGGREGATE_PUB", None) or os.environ.get("EVALUATOR_AGGREGATE_PUB")
-    if not agg_b64:
-        agg_b64 = "BMoeszozNQn0Su22c0O3pU++H8dbWINR1PVbCDispkixuohE0Q7P2N6JNy+2z4103wTOpsaoPBe8QodA1OI2g9Q="
+    if not agg_b64 or not agg_b64.strip():
+        if is_prod:
+            raise RuntimeError("FATAL: EVALUATOR_AGGREGATE_PUB is required in production environment.")
+        agg_b64 = "BA1RzbWdkHqeSemHj3/wi6w6OOw0Nqxz9bf9xeos0UIKaO6Vv+vKZCZytQC460fvbMxzhljJ8OAlP+OYcWQwWhI="
 
     return key_id, party_id, party_index, share_val, pub_elem, agg_b64, peer_pubkeys
 

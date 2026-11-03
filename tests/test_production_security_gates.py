@@ -102,11 +102,49 @@ def test_production_starts_cleanly_with_secure_keys_and_postgres(monkeypatch):
     monkeypatch.setenv("DASHBOARD_PASSWORD", "a_very_secure_dashboard_pass_2026")
     monkeypatch.setenv("DATABASE_URL", "postgresql://prod_user:secret@localhost:5432/registry_db")
     monkeypatch.setenv("SEED_TEST_PARTNERS", "false")
+    monkeypatch.setenv("EVALUATOR_SHARE_K", "9fe8ad784aa9c596b091060eeaf91ef3330eae2954251a91018aa76699983a85")
+    monkeypatch.setenv("EVALUATOR_PEER_PUBKEYS", "BJ8m3hJug+Y0V7hR3rH84fa+5AIAQsVVaCaDTGfGTp56NzsOk2HZWOyrjGRbykUNlxVSqx24LC9mzf9T2FKm+zU=,BLsrheMvOj3EeWaaXImEgn7qplgNfOe0Ds6383CkKMvt67srGKCfMNJQ5aOe5+aagI0F9Yev8/gecI+7pbR1M4E=,BL0Geozqg73DQS/sOR+sFyzgpO4YYWS949WCcan5E1JWRbIE4qe/UZXT/gffBoaV22pkmUp4/9d6LqFWareOMXY=")
+    monkeypatch.setenv("EVALUATOR_AGGREGATE_PUB", "BA1RzbWdkHqeSemHj3/wi6w6OOw0Nqxz9bf9xeos0UIKaO6Vv+vKZCZytQC460fvbMxzhljJ8OAlP+OYcWQwWhI=")
 
     s = Settings(_env_file=None)
     s.validate_production_security()
     assert s.ENV == "production"
     assert s.SERVER_KEY == "c0ffee" * 8
+
+def test_absent_share_refuses_production_boot(monkeypatch):
+    """
+    With ENV=production and no EVALUATOR_SHARE_K, importing config or the evaluator router raises.
+    """
+    monkeypatch.setenv("ENV", "production")
+    monkeypatch.setenv("SERVER_KEY", "c0ffee" * 8)
+    monkeypatch.setenv("ADMIN_KEY", "d099ee" * 8)
+    monkeypatch.setenv("DASHBOARD_PASSWORD", "a_very_secure_dashboard_pass_2026")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://prod_user:secret@localhost:5432/registry_db")
+    monkeypatch.setenv("SEED_TEST_PARTNERS", "false")
+    monkeypatch.delenv("EVALUATOR_SHARE_K", raising=False)
+    import app.routes.evaluator
+    monkeypatch.setattr(app.routes.evaluator.settings, "EVALUATOR_SHARE_K", None)
+
+    with pytest.raises(ValueError, match="EVALUATOR_SHARE_K is required"):
+        s = Settings(_env_file=None)
+        s.validate_production_security()
+
+    import importlib
+    import app.routes.evaluator
+    with pytest.raises(RuntimeError, match="EVALUATOR_SHARE_K is not set or is empty"):
+        importlib.reload(app.routes.evaluator)
+
+def test_retired_literal_rejected_as_burned(monkeypatch):
+    """
+    Asserts that the retired evaluator share literal is permanently burned and refused.
+    """
+    retired_hex = "5cfa51060880d8d043bf65b215457a97ade09f39b2d00ee6de4083ee4d87c7a8"
+    monkeypatch.setenv("ENV", "development")
+    monkeypatch.setenv("EVALUATOR_SHARE_K", retired_hex)
+
+    with pytest.raises(ValueError, match="matches a known burned"):
+        s = Settings(_env_file=None)
+        s.validate_production_security()
 
 def test_production_dev_console_returns_404(client, monkeypatch):
     """

@@ -15,9 +15,9 @@ os.environ["ADMIN_KEY"] = "test_admin_key_super_secret"
 os.environ["EVALUATOR_KEY_ID"] = "ke-pilot-v4"
 os.environ["EVALUATOR_PARTY_ID"] = "safic"
 os.environ["EVALUATOR_PARTY_INDEX"] = "1"
-os.environ["EVALUATOR_SHARE_K"] = "5cfa51060880d8d043bf65b215457a97ade09f39b2d00ee6de4083ee4d87c7a8"
-os.environ["EVALUATOR_PEER_PUBKEYS"] = "BB+kqC5pFbFv1L9I8MRmTnZHgZUarR4P9xj19RShJhwfJYmv7p7ky34FeklakjJm1Ee/eGGihJRw7XuzzsZuc8c=,BPtkkn42JAlT3Ah13aY8vgDs2ENYr1mLcmbEfsubQUW41X2vhxuafZWZLkuF34CkI0vS6bVPp+clsW0nWRgDnqo=,BHdfWrtka5uEGxX+5+upLriDzmehz7O6hJ89oOFSqepxBUITvrauE64y3mpGmAAwhf7ray8LPDDzdl+JeWukPz0="
-os.environ["EVALUATOR_AGGREGATE_PUB"] = "BMoeszozNQn0Su22c0O3pU++H8dbWINR1PVbCDispkixuohE0Q7P2N6JNy+2z4103wTOpsaoPBe8QodA1OI2g9Q="
+os.environ["EVALUATOR_SHARE_K"] = "9fe8ad784aa9c596b091060eeaf91ef3330eae2954251a91018aa76699983a85"
+os.environ["EVALUATOR_PEER_PUBKEYS"] = "BJ8m3hJug+Y0V7hR3rH84fa+5AIAQsVVaCaDTGfGTp56NzsOk2HZWOyrjGRbykUNlxVSqx24LC9mzf9T2FKm+zU=,BLsrheMvOj3EeWaaXImEgn7qplgNfOe0Ds6383CkKMvt67srGKCfMNJQ5aOe5+aagI0F9Yev8/gecI+7pbR1M4E=,BL0Geozqg73DQS/sOR+sFyzgpO4YYWS949WCcan5E1JWRbIE4qe/UZXT/gffBoaV22pkmUp4/9d6LqFWareOMXY="
+os.environ["EVALUATOR_AGGREGATE_PUB"] = "BA1RzbWdkHqeSemHj3/wi6w6OOw0Nqxz9bf9xeos0UIKaO6Vv+vKZCZytQC460fvbMxzhljJ8OAlP+OYcWQwWhI="
 os.environ["CURVE_BACKEND"] = "pure_python"
 
 from app.config import settings

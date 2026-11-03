@@ -78,7 +78,7 @@ from tests.conftest import TestingSessionLocal
 # Test Keys and Fixtures
 # -----------------------------------------------------------------------------
 KEY_ID = "ke-pilot-v4"
-SECRET_K = 0x5cfa51060880d8d043bf65b215457a97ade09f39b2d00ee6de4083ee4d87c7a8
+SECRET_K = 0x4a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef0123456789abcdef
 POLY_A1 = 0xa3b2c1d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8
 
 # 2-of-3 Shamir shares: f(x) = k + a1 * x mod n
