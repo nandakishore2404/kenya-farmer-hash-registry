@@ -3,7 +3,8 @@ import io
 import re
 import email
 import base64
-from datetime import datetime, timezone
+from sqlalchemy.exc import IntegrityError
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, Request, HTTPException, status
 from sqlalchemy.orm import Session
@@ -76,27 +77,56 @@ def process_farmer_registration(
     ).first()
 
     if not entity_alias:
-        entity = FarmerEntity(created_at=now, updated_at=now, status="active")
-        db.add(entity)
-        db.flush()
-        entity_alias = TokenAlias(
-            entity_id=entity.entity_id,
-            pilot_id="kenya-pilot",
-            scheme="legacy_hmac",
-            key_id="legacy-hmac-v1",
-            digest_d=hash_key,
-            created_at=now
-        )
-        db.add(entity_alias)
-        db.add(PartnerAssociation(
-            entity_id=entity.entity_id,
-            partner_id=partner_id,
-            role="onboarder",
-            first_seen=ts,
-            last_seen=now,
-            status="active"
-        ))
-        resolved_entity_id = entity.entity_id
+        try:
+            with db.begin_nested():
+                entity = FarmerEntity(created_at=now, updated_at=now, status="active")
+                db.add(entity)
+                db.flush()
+                entity_alias = TokenAlias(
+                    entity_id=entity.entity_id,
+                    pilot_id="kenya-pilot",
+                    scheme="legacy_hmac",
+                    key_id="legacy-hmac-v1",
+                    digest_d=hash_key,
+                    created_at=now
+                )
+                db.add(entity_alias)
+                db.flush()
+                db.add(PartnerAssociation(
+                    entity_id=entity.entity_id,
+                    partner_id=partner_id,
+                    role="onboarder",
+                    first_seen=ts,
+                    last_seen=now,
+                    status="active"
+                ))
+                resolved_entity_id = entity.entity_id
+        except IntegrityError:
+            # Race condition: another request inserted this digest_d concurrently
+            entity_alias = db.query(TokenAlias).filter(
+                TokenAlias.scheme == "legacy_hmac",
+                TokenAlias.digest_d == hash_key,
+                TokenAlias.status == "active"
+            ).first()
+            if not entity_alias:
+                raise
+            resolved_entity_id = entity_alias.entity_id
+            assoc = db.query(PartnerAssociation).filter(
+                PartnerAssociation.entity_id == resolved_entity_id,
+                PartnerAssociation.partner_id == partner_id
+            ).first()
+            if not assoc:
+                db.add(PartnerAssociation(
+                    entity_id=resolved_entity_id,
+                    partner_id=partner_id,
+                    role="contributor",
+                    first_seen=ts,
+                    last_seen=now,
+                    status="active"
+                ))
+            else:
+                assoc.last_seen = now
+                assoc.status = "active"
     else:
         resolved_entity_id = entity_alias.entity_id
         assoc = db.query(PartnerAssociation).filter(
@@ -254,41 +284,77 @@ def register_farmer_voprf_token(
 
     is_new = False
     if not alias:
-        # Create brand new FarmerEntity
-        entity = FarmerEntity(created_at=now, updated_at=now, status="active")
-        db.add(entity)
-        db.flush()
+        # Create brand new FarmerEntity inside nested savepoint to handle concurrency
+        try:
+            with db.begin_nested():
+                entity = FarmerEntity(created_at=now, updated_at=now, status="active")
+                db.add(entity)
+                db.flush()
 
-        alias = TokenAlias(
-            entity_id=entity.entity_id,
-            pilot_id=payload.pilot_id,
-            scheme="voprf_ristretto255",
-            key_id=payload.key_id,
-            digest_d=digest_d,
-            created_at=now
-        )
-        db.add(alias)
+                alias = TokenAlias(
+                    entity_id=entity.entity_id,
+                    pilot_id=payload.pilot_id,
+                    scheme="voprf_secp256k1",
+                    key_id=payload.key_id,
+                    digest_d=digest_d,
+                    created_at=now
+                )
+                db.add(alias)
+                db.flush()
 
-        assoc = PartnerAssociation(
-            entity_id=entity.entity_id,
-            partner_id=partner.partner_id,
-            role=payload.role or "onboarder",
-            first_seen=now,
-            last_seen=now,
-            status="active"
-        )
-        db.add(assoc)
+                assoc = PartnerAssociation(
+                    entity_id=entity.entity_id,
+                    partner_id=partner.partner_id,
+                    role=payload.role or "onboarder",
+                    first_seen=now,
+                    last_seen=now,
+                    status="active"
+                )
+                db.add(assoc)
 
-        db.add(AuditLog(
-            action="voprf_register_first",
-            partner_id=partner.partner_id,
-            entity_id=entity.entity_id,
-            at=now
-        ))
-        is_new = True
-        resolved_id = entity.entity_id
-    else:
+                db.add(AuditLog(
+                    action="voprf_register_first",
+                    partner_id=partner.partner_id,
+                    entity_id=entity.entity_id,
+                    at=now
+                ))
+                is_new = True
+                resolved_id = entity.entity_id
+        except IntegrityError:
+            # Race condition: another request inserted this digest_d concurrently
+            alias = db.query(TokenAlias).filter(
+                TokenAlias.pilot_id == payload.pilot_id,
+                TokenAlias.key_id == payload.key_id,
+                TokenAlias.digest_d == digest_d,
+                TokenAlias.status == "active"
+            ).first()
+            if not alias:
+                raise
+            resolved_id = alias.entity_id
+            is_new = False
+
+    if not is_new:
         resolved_id = alias.entity_id
+
+        # SIM Recycling Dormancy Check (60-90 days configurable threshold)
+        from app.config import settings
+        dormancy_days = getattr(settings, "SIM_REASSIGNMENT_DORMANCY_DAYS", 90)
+        dormancy_cutoff = now - timedelta(days=dormancy_days)
+
+        last_assoc = db.query(PartnerAssociation).filter(
+            PartnerAssociation.entity_id == resolved_id
+        ).order_by(PartnerAssociation.last_seen.desc()).first()
+
+        if last_assoc and last_assoc.last_seen:
+            last_seen_dt = last_assoc.last_seen if last_assoc.last_seen.tzinfo else last_assoc.last_seen.replace(tzinfo=timezone.utc)
+            if last_seen_dt < dormancy_cutoff:
+                db.add(AuditLog(
+                    action="potential_sim_reassignment_flagged",
+                    partner_id=partner.partner_id,
+                    entity_id=resolved_id,
+                    at=now
+                ))
+
         assoc = db.query(PartnerAssociation).filter(
             PartnerAssociation.entity_id == resolved_id,
             PartnerAssociation.partner_id == partner.partner_id

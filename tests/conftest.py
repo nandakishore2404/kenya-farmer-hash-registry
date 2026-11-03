@@ -4,13 +4,21 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+# Purge deprecated single-key environment variable
+os.environ.pop("EVALUATOR_SECRET_K", None)
+
 # Set test environment variables before importing app modules
 os.environ["ENV"] = "development"
 os.environ["DATABASE_URL"] = "sqlite:///./test_registry.db"
 os.environ["SERVER_KEY"] = "test_server_secret_rekey_key_abc123"
 os.environ["ADMIN_KEY"] = "test_admin_key_super_secret"
-os.environ["EVALUATOR_SECRET_K"] = "e8c7b6a5d4c3b2a1908f7e6d5c4b3a2918273645e5d4c3b2a10987654321abcd"
-os.environ["EVALUATOR_KEY_ID"] = "ke-pilot-v3"
+os.environ["EVALUATOR_KEY_ID"] = "ke-pilot-v4"
+os.environ["EVALUATOR_PARTY_ID"] = "safic"
+os.environ["EVALUATOR_PARTY_INDEX"] = "1"
+os.environ["EVALUATOR_SHARE_K"] = "5cfa51060880d8d043bf65b215457a97ade09f39b2d00ee6de4083ee4d87c7a8"
+os.environ["EVALUATOR_PEER_PUBKEYS"] = "BB+kqC5pFbFv1L9I8MRmTnZHgZUarR4P9xj19RShJhwfJYmv7p7ky34FeklakjJm1Ee/eGGihJRw7XuzzsZuc8c=,BPtkkn42JAlT3Ah13aY8vgDs2ENYr1mLcmbEfsubQUW41X2vhxuafZWZLkuF34CkI0vS6bVPp+clsW0nWRgDnqo=,BHdfWrtka5uEGxX+5+upLriDzmehz7O6hJ89oOFSqepxBUITvrauE64y3mpGmAAwhf7ray8LPDDzdl+JeWukPz0="
+os.environ["EVALUATOR_AGGREGATE_PUB"] = "BMoeszozNQn0Su22c0O3pU++H8dbWINR1PVbCDispkixuohE0Q7P2N6JNy+2z4103wTOpsaoPBe8QodA1OI2g9Q="
+os.environ["CURVE_BACKEND"] = "pure_python"
 
 from app.config import settings
 from app.database import Base, get_db
@@ -47,7 +55,7 @@ def setup_test_db():
     yield
     
     from app.audit import audit_worker
-    audit_worker.flush()
+    audit_worker.flush(timeout=1.0)
     Base.metadata.drop_all(bind=test_engine)
 
 @pytest.fixture

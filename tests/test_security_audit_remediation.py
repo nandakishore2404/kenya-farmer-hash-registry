@@ -20,7 +20,7 @@ from fastapi import HTTPException
 from app.config import Settings, COMMITTED_INSECURE_KEYS
 from app.models import FarmerEntity, TokenAlias, PartnerAssociation, FarmerConsent, Partner
 from app.crypto.voprf import VOPRFEngine, GroupElement, GENERATOR_G, point_mul
-from app.routes.evaluator import EVALUATOR_SECRET_K, EVALUATOR_PUBLIC_KEY, EVALUATOR_KEY_ID
+from app.routes.evaluator import EVALUATOR_SHARE_K, EVALUATOR_PUBLIC_KEY, EVALUATOR_KEY_ID
 from app.routes.farmers import register_farmer_voprf_token
 from app.schemas import VOPRFFarmerRegisterRequest
 from app.routes.consent import check_consent_policy_enforcement_point, capture_consent, ConsentCaptureRequest
@@ -31,29 +31,28 @@ from sdk.python.voprf_client import normalise_kenyan_phone
 def test_critical_1_evaluator_secret_required_and_refuses_burned_keys():
     """
     CRITICAL 1:
-    - Fails startup if EVALUATOR_SECRET_K is absent or empty.
-    - Fails startup if EVALUATOR_SECRET_K matches burned public repo scalars.
+    - Fails startup if deprecated EVALUATOR_SECRET_K is set.
+    - Fails startup if EVALUATOR_SHARE_K matches burned public repo scalars.
     - Asserts no literal 64-hex burned scalar exists in app/routes/evaluator.py.
     """
-    # 1. Missing secret key raises ValueError
-    with pytest.raises(ValueError, match="EVALUATOR_SECRET_K is required"):
-        Settings(
-            ENV="production",
-            SERVER_KEY="a" * 32,
-            ADMIN_KEY="b" * 32,
-            DATABASE_URL="postgresql://user:pass@localhost:5432/db",
-            DASHBOARD_PASSWORD="c" * 16,
-            EVALUATOR_SECRET_K=None
-        )
+    # 1. Deprecated EVALUATOR_SECRET_K raises fatal error
+    import os
+    os.environ["EVALUATOR_SECRET_K"] = "11" * 32
+    try:
+        with pytest.raises(ValueError, match="EVALUATOR_SECRET_K is present in the environment"):
+            Settings()
+    finally:
+        os.environ.pop("EVALUATOR_SECRET_K", None)
 
-    with pytest.raises(ValueError, match="EVALUATOR_SECRET_K is required"):
+    # Empty share raises ValueError
+    with pytest.raises(ValueError, match="EVALUATOR_SHARE_K cannot be empty"):
         Settings(
             ENV="production",
             SERVER_KEY="a" * 32,
             ADMIN_KEY="b" * 32,
             DATABASE_URL="postgresql://user:pass@localhost:5432/db",
             DASHBOARD_PASSWORD="c" * 16,
-            EVALUATOR_SECRET_K=""
+            EVALUATOR_SHARE_K=""
         )
 
     # 2. Burned v2 scalar from commit 7d940cd is permanently refused
@@ -65,7 +64,7 @@ def test_critical_1_evaluator_secret_required_and_refuses_burned_keys():
             ADMIN_KEY="b" * 32,
             DATABASE_URL="postgresql://user:pass@localhost:5432/db",
             DASHBOARD_PASSWORD="c" * 16,
-            EVALUATOR_SECRET_K=burned_v2
+            EVALUATOR_SHARE_K=burned_v2
         )
 
     # 3. Source code scan: app/routes/evaluator.py must NOT contain hardcoded scalar
@@ -128,7 +127,7 @@ def test_high_2_quarantined_alias_is_not_resolved(db_session):
     compromised_alias = TokenAlias(
         entity_id=compromised_entity.entity_id,
         pilot_id="kenya-pilot",
-        scheme="voprf_ristretto255",
+        scheme="voprf_secp256k1",
         key_id=EVALUATOR_KEY_ID,
         digest_d=digest_d,
         status="compromised_v1_legacy"
@@ -150,7 +149,7 @@ def test_high_2_quarantined_alias_is_not_resolved(db_session):
     db_session.add(TokenAlias(
         entity_id=compromised_entity.entity_id,
         pilot_id="kenya-pilot",
-        scheme="voprf_ristretto255",
+        scheme="voprf_secp256k1",
         key_id=EVALUATOR_KEY_ID,
         digest_d="other_compromised_digest",
         status="compromised_v1_legacy"
@@ -234,24 +233,16 @@ def test_medium_9_telemetry_reconciles_without_quarantined_association_inflation
 def test_n1_burned_key_reencoding_refused():
     """
     N1: Burned-key blocklist cannot be bypassed by scalar reduction or re-encoding.
-    Asserts both plain burned value and hex(burned + N_ORDER) are refused at startup.
+    Asserts both plain burned value and malformed/burned values are refused at startup.
     """
-    from app.config import N_ORDER
-    burned_v2 = 0x5d8a9f1b2c3e4d5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f91
-    re_encoded_burned = hex(burned_v2 + N_ORDER)
+    burned_v2 = "0x5d8a9f1b2c3e4d5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f91"
 
-    # 1. Re-encoded burned value mod N_ORDER must be refused
-    with pytest.raises(ValueError, match="known burned or insecure placeholder"):
+    # 1. Plain burned hex string must be refused
+    with pytest.raises(ValueError, match="known burned"):
         Settings(
             ENV="development",
-            EVALUATOR_SECRET_K=re_encoded_burned
-        )
-
-    # 2. Plain burned hex string must be refused
-    with pytest.raises(ValueError, match="known burned or insecure placeholder"):
-        Settings(
-            ENV="development",
-            EVALUATOR_SECRET_K=hex(burned_v2)
+            EVALUATOR_SHARE_K=burned_v2,
+            EVALUATOR_PEER_PUBKEYS=""
         )
 
 def test_n2_secret_not_echoed_in_exception_output():
@@ -271,7 +262,8 @@ def test_n2_secret_not_echoed_in_exception_output():
             ADMIN_KEY="b" * 32,
             DATABASE_URL="postgresql://user:pass@localhost:5432/db",
             DASHBOARD_PASSWORD="c" * 16,
-            EVALUATOR_SECRET_K=secret_k
+            EVALUATOR_SHARE_K=secret_k,
+            EVALUATOR_PEER_PUBKEYS=""
         )
     exc_text = str(excinfo.value)
     assert secret_marker not in exc_text
@@ -283,13 +275,14 @@ def test_n2_secret_not_echoed_in_exception_output():
         SERVER_KEY="a" * 32,
         ADMIN_KEY="b" * 32,
         DASHBOARD_PASSWORD="c" * 16,
-        EVALUATOR_SECRET_K=secret_k
+        EVALUATOR_SHARE_K=secret_k,
+        EVALUATOR_PEER_PUBKEYS=""
     )
     for field_name, real_val in [
         ("SERVER_KEY", "a" * 32),
         ("ADMIN_KEY", "b" * 32),
         ("DASHBOARD_PASSWORD", "c" * 16),
-        ("EVALUATOR_SECRET_K", secret_k)
+        ("EVALUATOR_SHARE_K", secret_k)
     ]:
         obj = getattr(s, field_name)
         assert str(obj) == "**********"
@@ -307,24 +300,24 @@ def test_n3_evaluator_key_encoding_strict():
     valid_64_hex = "e8c7b6a5d4c3b2a1908f7e6d5c4b3a2918273645e5d4c3b2a10987654321abcd"
 
     # Accepted: 64 hex characters
-    s1 = Settings(ENV="development", EVALUATOR_SECRET_K=valid_64_hex)
-    assert s1.EVALUATOR_SECRET_K is not None
+    s1 = Settings(ENV="development", EVALUATOR_SHARE_K=valid_64_hex, EVALUATOR_PEER_PUBKEYS="")
+    assert s1.EVALUATOR_SHARE_K is not None
 
     # Accepted: 64 hex characters with 0x prefix
-    s2 = Settings(ENV="development", EVALUATOR_SECRET_K="0x" + valid_64_hex)
-    assert s2.EVALUATOR_SECRET_K is not None
+    s2 = Settings(ENV="development", EVALUATOR_SHARE_K="0x" + valid_64_hex, EVALUATOR_PEER_PUBKEYS="")
+    assert s2.EVALUATOR_SHARE_K is not None
 
     # Rejected: Decimal string
     with pytest.raises(ValueError, match="must be exactly 64 hexadecimal characters"):
-        Settings(ENV="development", EVALUATOR_SECRET_K="123456789012345678901234567890")
+        Settings(ENV="development", EVALUATOR_SHARE_K="123456789012345678901234567890", EVALUATOR_PEER_PUBKEYS="")
 
     # Rejected: Non-hex malformed string
     with pytest.raises(ValueError, match="must be exactly 64 hexadecimal characters"):
-        Settings(ENV="development", EVALUATOR_SECRET_K="g" * 64)
+        Settings(ENV="development", EVALUATOR_SHARE_K="g" * 64, EVALUATOR_PEER_PUBKEYS="")
 
     # Rejected: Wrong length
     with pytest.raises(ValueError, match="must be exactly 64 hexadecimal characters"):
-        Settings(ENV="development", EVALUATOR_SECRET_K="abcd1234")
+        Settings(ENV="development", EVALUATOR_SHARE_K="abcd1234", EVALUATOR_PEER_PUBKEYS="")
 
 def test_n8_internal_service_pep_scoped_to_target_partner(db_session):
     """

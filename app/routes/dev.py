@@ -26,7 +26,7 @@ from app.crypto.voprf import (
     verify_dleq_proof,
     GENERATOR_G
 )
-from app.routes.evaluator import EVALUATOR_SECRET_K, EVALUATOR_PUBLIC_KEY, EVALUATOR_KEY_ID
+from app.routes.evaluator import EVALUATOR_SHARE_K, EVALUATOR_PUBLIC_KEY, EVALUATOR_KEY_ID
 from app.hashing import compute_voprf_storage_digest
 from sdk.python.voprf_client import normalise_kenyan_phone, OfflineStoreAndForwardQueue
 
@@ -172,7 +172,7 @@ def dev_voprf_register(payload: VOPRFRegisterPayload, db: Session = Depends(get_
     }
 
     # LEVEL 2: Evaluator HSM (RFC 9497)
-    Z, proof = VOPRFEngine.evaluate(EVALUATOR_SECRET_K, B, EVALUATOR_PUBLIC_KEY)
+    Z, proof = VOPRFEngine.evaluate(EVALUATOR_SHARE_K, B, EVALUATOR_PUBLIC_KEY)
     proof_valid = verify_dleq_proof(GENERATOR_G, EVALUATOR_PUBLIC_KEY, B, Z, proof)
     if not proof_valid:
         raise HTTPException(status_code=500, detail="VOPRF DLEQ proof validation failed")
@@ -220,7 +220,7 @@ def dev_voprf_register(payload: VOPRFRegisterPayload, db: Session = Depends(get_
         alias = TokenAlias(
             entity_id=entity_id,
             pilot_id="kenya-pilot",
-            scheme="voprf_ristretto255",
+            scheme="voprf_secp256k1",
             key_id=EVALUATOR_KEY_ID,
             digest_d=digest_d,
             created_at=now
@@ -586,7 +586,7 @@ def run_scenario(scenario_name: str, db: Session = Depends(get_db)):
         norm_new = normalise_kenyan_phone(new_phone)
         x_new = VOPRFEngine.encode_input("kenya-pilot", norm_new)
         B_new, r_new = VOPRFEngine.blind(x_new)
-        Z_new, proof_new = VOPRFEngine.evaluate(EVALUATOR_SECRET_K, B_new, EVALUATOR_PUBLIC_KEY)
+        Z_new, proof_new = VOPRFEngine.evaluate(EVALUATOR_SHARE_K, B_new, EVALUATOR_PUBLIC_KEY)
         N_new = VOPRFEngine.unblind(Z_new, r_new)
         token_new = VOPRFEngine.finalize(x_new, N_new)
         digest_new = compute_voprf_storage_digest("kenya-pilot", EVALUATOR_KEY_ID, token_new)
@@ -602,7 +602,7 @@ def run_scenario(scenario_name: str, db: Session = Depends(get_db)):
             db.add(TokenAlias(
                 entity_id=entity_id,
                 pilot_id="kenya-pilot",
-                scheme="voprf_ristretto255",
+                scheme="voprf_secp256k1",
                 key_id=EVALUATOR_KEY_ID,
                 digest_d=digest_new,
                 created_at=now

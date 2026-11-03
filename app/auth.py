@@ -22,7 +22,7 @@ async def authenticate_partner(
     Authenticates delivery partner requests:
     1. Looks up partner by SHA-256 hash of X-Partner-Key and ensures active
     2. Enforces required signature headers (X-Timestamp, X-Nonce, X-Signature)
-    3. Enforces X-Timestamp (within 300 seconds of server time)
+    3. Enforces X-Timestamp (configurable MAX_CLOCK_SKEW_SECONDS, default 900s)
     4. Enforces X-Nonce format (at least 16 chars)
     5. Validates HMAC-SHA256 signature v2 (method, path, query, timestamp, nonce, sha256(body))
     6. Nonce check and insert (rejecting replays, catching IntegrityError on uq_partner_nonce)
@@ -53,7 +53,7 @@ async def authenticate_partner(
             detail="Missing signature headers"
         )
 
-    # Validate timestamp
+    # Validate timestamp with configurable clock skew tolerance
     try:
         req_ts = int(x_timestamp.strip())
     except ValueError:
@@ -63,10 +63,12 @@ async def authenticate_partner(
         )
         
     current_ts = int(time.time())
-    if abs(current_ts - req_ts) > 300:
+    max_skew = getattr(settings, "MAX_CLOCK_SKEW_SECONDS", 900)
+    skew = abs(current_ts - req_ts)
+    if skew > max_skew:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Request timestamp expired or skewed beyond 300 seconds"
+            detail=f"Request timestamp expired / clock skew detected: request timestamp '{req_ts}' deviates by {skew}s from server time '{current_ts}' (max allowed: {max_skew}s). Synchronize device clock against GET /v1/time before retrying."
         )
         
     nonce_str = x_nonce.strip()
@@ -110,12 +112,12 @@ async def authenticate_partner(
             detail="Invalid request signature"
         )
 
-    # Check if nonce was seen in the last 10 minutes
-    ten_mins_ago = datetime.now(timezone.utc) - timedelta(minutes=10)
+    # Check if nonce was seen in the last 15 minutes
+    window_cutoff = datetime.now(timezone.utc) - timedelta(seconds=max_skew)
     existing_nonce = db.query(RequestNonce).filter(
         RequestNonce.partner_id == partner.partner_id,
         RequestNonce.nonce == nonce_str,
-        RequestNonce.seen_at >= ten_mins_ago
+        RequestNonce.seen_at >= window_cutoff
     ).first()
     
     if existing_nonce:
@@ -133,7 +135,7 @@ async def authenticate_partner(
     db.add(new_nonce)
     try:
         # Purge older nonces
-        db.query(RequestNonce).filter(RequestNonce.seen_at < ten_mins_ago).delete()
+        db.query(RequestNonce).filter(RequestNonce.seen_at < window_cutoff).delete()
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -143,7 +145,6 @@ async def authenticate_partner(
         )
     
     return partner
-
 
 def authenticate_admin(
     x_admin_key: Optional[str] = Header(None, alias="X-Admin-Key")

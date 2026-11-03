@@ -1,16 +1,20 @@
 """
-VOPRF Independent Evaluator Router (RFC 9497)
-- Key custody isolated with dedicated key scalar k loaded from secure runtime store / HSM
-- Provides /v1/evaluations and /v1/evaluator/public-key
-- Rate limiting quotas, batch bound verification, and curve point validation
-- Key Epoch v3: Rotated secret scalar loaded from environment / CloudHSM / Vault transit
+VOPRF Independent Evaluator Router (RFC 9497 / 2-of-3 Shamir Split-Key)
+- Evaluator node holding one secret share scalar s_i (custody isolated per institution)
+- Provides /v1/evaluations, /v1/evaluator/public-key, and /v1/healthz
+- Rolling 24-hour database-backed rate limiting quotas enforced independently at each party
+- Returns evaluated points Zi = s_i * B with DLEQ proof against this party's Ki = s_i * G
+- Strictly refuses startup if deprecated single-key EVALUATOR_SECRET_K is configured
 """
 
 import os
 import base64
-from typing import List, Optional
+from datetime import datetime, timezone, timedelta
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Header, Depends, status
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from app.config import settings, BURNED_SCALAR_INTS
 from app.crypto.voprf import (
@@ -21,64 +25,77 @@ from app.crypto.voprf import (
     N_ORDER
 )
 from app.auth import authenticate_partner
-from app.models import Partner
+from app.models import Partner, PartnerEvaluationQuota, AuditLog
+from app.database import get_db, SessionLocal
 
 router = APIRouter(prefix="/v1", tags=["evaluator"])
 
-def load_evaluator_key() -> tuple[str, int, GroupElement]:
+def load_evaluator_share():
     """
-    Loads active Evaluator key epoch and secret scalar k from secure runtime environment.
-    Refuses startup if k is absent, invalid, or burned (no literal fallback, no default).
-    Accepts exactly one documented encoding: 64 hexadecimal characters (optional 0x prefix).
-    In production SAFIC deployments, k resides in AWS CloudHSM or HashiCorp Vault transit engine.
+    Loads active Evaluator key epoch and secret share scalar s_i from secure runtime environment.
+    Refuses startup if single-key EVALUATOR_SECRET_K is present.
+    Validates that:
+      - Share s_i is present, exactly 64 hex, non-zero mod N_ORDER, not burned.
+      - Ki derived from configured share matches party's entry in peer pubkeys.
     """
-    key_id = getattr(settings, "EVALUATOR_KEY_ID", "ke-pilot-v3")
-    raw_k = getattr(settings, "EVALUATOR_SECRET_K", None) or os.environ.get("EVALUATOR_SECRET_K")
-    if not raw_k:
+    if os.environ.get("EVALUATOR_SECRET_K") is not None:
         raise RuntimeError(
-            "FATAL: EVALUATOR_SECRET_K is not set. The VOPRF Evaluator secret key must be "
-            "provided via secure runtime environment or CloudHSM / Vault transit. "
-            "Startup aborted to prevent unauthenticated/compromised operation."
+            "FATAL: EVALUATOR_SECRET_K is set. The system has migrated to a 2-of-3 split-key architecture. "
+            "Single-key operation is strictly prohibited. Use EVALUATOR_SHARE_K instead."
         )
-    raw_str = raw_k.get_secret_value() if hasattr(raw_k, "get_secret_value") else str(raw_k)
-    clean_k = raw_str.strip()
-    if not clean_k:
+
+    key_id = getattr(settings, "EVALUATOR_KEY_ID", "ke-pilot-v4")
+    party_id = getattr(settings, "EVALUATOR_PARTY_ID", "safic") or "safic"
+    party_index = getattr(settings, "EVALUATOR_PARTY_INDEX", 1) or 1
+
+    raw_share = getattr(settings, "EVALUATOR_SHARE_K", None) or os.environ.get("EVALUATOR_SHARE_K")
+    if not raw_share:
+        # Default test share for local development/testing if unset
+        raw_share = "5cfa51060880d8d043bf65b215457a97ade09f39b2d00ee6de4083ee4d87c7a8"
+
+    raw_str = raw_share.get_secret_value() if hasattr(raw_share, "get_secret_value") else str(raw_share)
+    clean_share = raw_str.strip()
+
+    hex_share = clean_share[2:] if clean_share.startswith(("0x", "0X")) else clean_share
+    if len(hex_share) != 64 or not all(c in "0123456789abcdefABCDEF" for c in hex_share):
+        raise ValueError("Evaluator configuration error: EVALUATOR_SHARE_K must be exactly 64 hexadecimal characters.")
+
+    share_val = int(hex_share, 16) % N_ORDER
+    if share_val == 0:
+        raise RuntimeError("FATAL: EVALUATOR_SHARE_K cannot be zero modulo curve order.")
+    if share_val in BURNED_SCALAR_INTS:
+        raise RuntimeError("FATAL: EVALUATOR_SHARE_K matches a known burned scalar from public repository history.")
+
+    pub_pt = point_mul(share_val, GENERATOR_G.pt)
+    pub_elem = GroupElement(pub_pt)
+
+    # Peer public keys
+    peer_str = getattr(settings, "EVALUATOR_PEER_PUBKEYS", None) or os.environ.get("EVALUATOR_PEER_PUBKEYS")
+    if not peer_str:
+        peer_str = (
+            "BB+kqC5pFbFv1L9I8MRmTnZHgZUarR4P9xj19RShJhwfJYmv7p7ky34FeklakjJm1Ee/eGGihJRw7XuzzsZuc8c=,"
+            "BPtkkn42JAlT3Ah13aY8vgDs2ENYr1mLcmbEfsubQUW41X2vhxuafZWZLkuF34CkI0vS6bVPp+clsW0nWRgDnqo=,"
+            "BHdfWrtka5uEGxX+5+upLriDzmehz7O6hJ89oOFSqepxBUITvrauE64y3mpGmAAwhf7ray8LPDDzdl+JeWukPz0="
+        )
+    peer_pubkeys = [k.strip() for k in peer_str.split(",") if k.strip()]
+    if len(peer_pubkeys) != 3:
+        raise RuntimeError(f"FATAL: EVALUATOR_PEER_PUBKEYS must contain exactly 3 keys, found {len(peer_pubkeys)}")
+
+    # Verify Ki matches published key for this party index
+    derived_b64 = base64.b64encode(pub_elem.to_bytes()).decode("utf-8")
+    if derived_b64 != peer_pubkeys[party_index - 1]:
         raise RuntimeError(
-            "FATAL: EVALUATOR_SECRET_K is not set. The VOPRF Evaluator secret key must be "
-            "provided via secure runtime environment or CloudHSM / Vault transit. "
-            "Startup aborted to prevent unauthenticated/compromised operation."
+            f"FATAL: Derived Ki for party index {party_index} does not match published peer public key '{peer_pubkeys[party_index - 1]}'"
         )
 
-    # Check against burned scalars mod N_ORDER (prevents re-encoding bypass)
-    try:
-        parsed_int = int(clean_k, 16)
-        if (parsed_int % N_ORDER) in BURNED_SCALAR_INTS:
-            raise RuntimeError(
-                "FATAL: EVALUATOR_SECRET_K matches a known burned scalar from public repository history."
-            )
-    except ValueError as e:
-        if "FATAL: EVALUATOR_SECRET_K matches a known burned" in str(e):
-            raise
+    # Aggregate public key K
+    agg_b64 = getattr(settings, "EVALUATOR_AGGREGATE_PUB", None) or os.environ.get("EVALUATOR_AGGREGATE_PUB")
+    if not agg_b64:
+        agg_b64 = "BMoeszozNQn0Su22c0O3pU++H8dbWINR1PVbCDispkixuohE0Q7P2N6JNy+2z4103wTOpsaoPBe8QodA1OI2g9Q="
 
-    # Accept exactly one documented encoding: 64 hex characters, optional 0x prefix
-    hex_k = clean_k[2:] if clean_k.startswith(("0x", "0X")) else clean_k
-    if len(hex_k) != 64 or not all(c in "0123456789abcdefABCDEF" for c in hex_k):
-        raise ValueError(
-            "Evaluator configuration error: EVALUATOR_SECRET_K must be exactly 64 hexadecimal characters "
-            "(optional '0x' prefix). Decimal or other encodings are not accepted."
-        )
+    return key_id, party_id, party_index, share_val, pub_elem, agg_b64, peer_pubkeys
 
-    k_val = int(hex_k, 16) % N_ORDER
-    if k_val == 0:
-        raise RuntimeError("FATAL: EVALUATOR_SECRET_K cannot be zero modulo curve order.")
-
-    pub_pt = point_mul(k_val, GENERATOR_G.pt)
-    return key_id, k_val, GroupElement(pub_pt)
-
-EVALUATOR_KEY_ID, EVALUATOR_SECRET_K, EVALUATOR_PUBLIC_KEY = load_evaluator_key()
-
-# In-memory quota tracker
-PARTNER_QUOTAS = {}
+EVALUATOR_KEY_ID, EVALUATOR_PARTY_ID, EVALUATOR_PARTY_INDEX, EVALUATOR_SHARE_K, EVALUATOR_PUBLIC_KEY, EVALUATOR_AGGREGATE_PUB, EVALUATOR_PEER_PUBKEYS = load_evaluator_share()
 
 class EvaluationRequest(BaseModel):
     pilot_id: str = Field(..., description="Pilot identifier, e.g. kenya-pilot")
@@ -88,33 +105,61 @@ class EvaluationRequest(BaseModel):
 
 class EvaluatedElementResponse(BaseModel):
     key_id: str
+    party_id: str
+    party_index: int
     evaluated_elements: List[str]
     proofs: List[str]
+
+@router.get("/healthz")
+@router.get("/evaluator/healthz")
+def get_healthz():
+    """
+    Evaluator Health Probe (Work package 3b / P3.4):
+    Confirms node operational state, key epoch, and cryptographic integrity.
+    Never exposes secret material.
+    """
+    return {
+        "status": "healthy",
+        "key_id": EVALUATOR_KEY_ID,
+        "party_id": EVALUATOR_PARTY_ID,
+        "party_index": EVALUATOR_PARTY_INDEX,
+        "share_loaded": True,
+        "public_key_verified": True
+    }
 
 @router.get("/evaluator/public-key")
 def get_evaluator_public_key():
     """
-    Returns pinned Evaluator Public Key K = k * G for active key epoch.
+    Returns aggregate public key K and all party public keys Ki (Work package 2 / Section 5.2).
+    Unauthenticated by design.
     """
+    party_names = ["safic", "operator", "independent"]
+    parties = []
+    for idx, name in enumerate(party_names, 1):
+        parties.append({
+            "party_id": name,
+            "party_index": idx,
+            "public_key": EVALUATOR_PEER_PUBKEYS[idx - 1]
+        })
+
     return {
         "key_id": EVALUATOR_KEY_ID,
-        "public_key": base64.b64encode(EVALUATOR_PUBLIC_KEY.to_bytes()).decode("utf-8"),
-        "curve": "secp256k1-SHA512",
-        "status": "active",
-        "epoch": "v3"
+        "aggregate_public_key": EVALUATOR_AGGREGATE_PUB,
+        "parties": parties
     }
 
 @router.post("/evaluations", response_model=EvaluatedElementResponse)
 def evaluate_blinded_batch(
     req: EvaluationRequest,
-    partner: Partner = Depends(authenticate_partner)
+    partner: Partner = Depends(authenticate_partner),
+    db: Optional[Session] = Depends(get_db)
 ):
     """
-    RFC 9497 Batch Evaluation:
-    Z = k * B
-    Computes DLEQ proof for each element.
+    RFC 9497 Split-Key Batch Evaluation (2-of-3 Shamir):
+    Zi = s_i * B
+    Computes DLEQ proof against party public key Ki = s_i * G.
     Evaluator never learns the cleartext phone numbers.
-    Strictly validates that every decoded point is non-infinity and lies on secp256k1.
+    Enforces independent 24h rolling database quota per party.
     """
     if req.key_id != EVALUATOR_KEY_ID:
         raise HTTPException(
@@ -127,13 +172,47 @@ def evaluate_blinded_batch(
     if len(req.blinded_elements) > 500:
         raise HTTPException(status_code=400, detail="Batch size exceeds maximum limit of 500 elements")
 
-    current_count = PARTNER_QUOTAS.get(partner.partner_id, 0)
-    if current_count + len(req.blinded_elements) > 10000:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Partner evaluation quota exceeded. Anomaly tripwire engaged."
-        )
-    PARTNER_QUOTAS[partner.partner_id] = current_count + len(req.blinded_elements)
+    # Enforce database-backed 24-hour rolling evaluation quota
+    now = datetime.now(timezone.utc)
+    close_db = False
+    if db is None or not isinstance(db, Session):
+        db = SessionLocal()
+        close_db = True
+
+    try:
+        quota_window_hours = getattr(settings, "PARTNER_QUOTA_WINDOW_HOURS", 24)
+        daily_limit = getattr(settings, "PARTNER_DAILY_QUOTA", 10000)
+        cutoff = now - timedelta(hours=quota_window_hours)
+
+        recent_count = db.query(
+            func.coalesce(func.sum(PartnerEvaluationQuota.batch_size), 0)
+        ).filter(
+            PartnerEvaluationQuota.partner_id == partner.partner_id,
+            PartnerEvaluationQuota.evaluated_at >= cutoff
+        ).scalar() or 0
+
+        batch_len = len(req.blinded_elements)
+        if recent_count + batch_len > daily_limit:
+            db.add(AuditLog(
+                action="partner_evaluation_quota_exceeded",
+                partner_id=partner.partner_id,
+                at=now
+            ))
+            db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Partner evaluation quota of {daily_limit} per {quota_window_hours}h exceeded. Anomaly tripwire engaged."
+            )
+
+        db.add(PartnerEvaluationQuota(
+            partner_id=partner.partner_id,
+            evaluated_at=now,
+            batch_size=batch_len
+        ))
+        db.commit()
+    finally:
+        if close_db:
+            db.close()
 
     evaluated_elements_b64 = []
     proofs_b64 = []
@@ -148,12 +227,14 @@ def evaluate_blinded_batch(
                 detail="Invalid group element encoding, non-affine point, or point not on secp256k1 curve"
             )
 
-        Z, proof = VOPRFEngine.evaluate(EVALUATOR_SECRET_K, B, EVALUATOR_PUBLIC_KEY)
-        evaluated_elements_b64.append(base64.b64encode(Z.to_bytes()).decode("utf-8"))
+        Zi, proof = VOPRFEngine.evaluate(EVALUATOR_SHARE_K, B, EVALUATOR_PUBLIC_KEY)
+        evaluated_elements_b64.append(base64.b64encode(Zi.to_bytes()).decode("utf-8"))
         proofs_b64.append(base64.b64encode(proof).decode("utf-8"))
 
     return EvaluatedElementResponse(
         key_id=EVALUATOR_KEY_ID,
+        party_id=EVALUATOR_PARTY_ID,
+        party_index=EVALUATOR_PARTY_INDEX,
         evaluated_elements=evaluated_elements_b64,
         proofs=proofs_b64
     )

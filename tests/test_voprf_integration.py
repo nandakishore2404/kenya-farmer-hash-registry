@@ -258,14 +258,14 @@ def test_hash_to_group_has_no_known_dlog():
     """
     import hashlib
     from app.crypto.voprf import hash_to_group, point_mul, verify_dleq_proof, N_ORDER
-    from app.routes.evaluator import EVALUATOR_SECRET_K
+    from app.routes.evaluator import EVALUATOR_SHARE_K
 
     phone = "+254712345678"
     x = VOPRFEngine.encode_input("kenya-pilot", phone)
 
     # 1. Honest protocol flow (Client Blinding -> Evaluator Evaluation -> Client Unblinding -> Finalize)
     B_honest, r_honest = VOPRFEngine.blind(x)
-    Z_honest, proof = VOPRFEngine.evaluate(EVALUATOR_SECRET_K, B_honest, EVALUATOR_PUBLIC_KEY)
+    Z_honest, proof = VOPRFEngine.evaluate(EVALUATOR_SHARE_K, B_honest, EVALUATOR_PUBLIC_KEY)
     assert verify_dleq_proof(GENERATOR_G, EVALUATOR_PUBLIC_KEY, B_honest, Z_honest, proof)
     N_honest = VOPRFEngine.unblind(Z_honest, r_honest)
     token_honest = VOPRFEngine.finalize(x, N_honest)

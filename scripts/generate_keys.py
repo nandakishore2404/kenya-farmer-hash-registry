@@ -11,13 +11,12 @@ def generate_key(num_bytes: int = 32) -> str:
 
 def main():
     print("=======================================================")
-    print("  KENYA FARMER HASH REGISTRY - KEY GENERATOR")
+    print("  KENYA FARMER HASH REGISTRY - SYSTEM KEY GENERATOR")
     print("=======================================================\n")
     
     partner_key = generate_key(32)
     server_key = generate_key(32)
     admin_key = generate_key(32)
-    evaluator_secret_k = generate_key(32)
     dashboard_pass = secrets.token_urlsafe(16)
     
     print(f"PARTNER_KEY (Shared pilot secret for delivery partners):")
@@ -26,8 +25,11 @@ def main():
     print(f"  {server_key}\n")
     print(f"ADMIN_KEY (Private key for administrative inspection):")
     print(f"  {admin_key}\n")
-    print(f"EVALUATOR_SECRET_K (Evaluator master private key scalar for VOPRF epoch ke-pilot-v3):")
-    print(f"  {evaluator_secret_k}\n")
+    print("NOTE ON EVALUATOR KEYS:")
+    print("  The single-key EVALUATOR_SECRET_K is strictly deprecated and rejected by the registry.")
+    print("  To generate production 2-of-3 split-key shares for Safic, Operator, and Independent,")
+    print("  run the air-gapped dealing ceremony script:")
+    print("    python scripts/deal_shares.py --epoch ke-pilot-v4 --output-dir ./shares\n")
     print(f"DASHBOARD_PASSWORD (Password for HTTP Basic Auth):")
     print(f"  {dashboard_pass}\n")
     print("-------------------------------------------------------")
@@ -43,8 +45,7 @@ def main():
                 f.write(f"DATABASE_URL=sqlite:///./local.db\n")
                 f.write(f"SERVER_KEY={server_key}\n")
                 f.write(f"ADMIN_KEY={admin_key}\n")
-                f.write(f"EVALUATOR_SECRET_K={evaluator_secret_k}\n")
-                f.write(f"EVALUATOR_KEY_ID=ke-pilot-v3\n")
+                f.write(f"EVALUATOR_KEY_ID=ke-pilot-v4\n")
                 f.write(f"PARTNER_KEY=partner_shared_pilot_secret\n")
                 f.write(f"PILOT_START_DATE=2026-10-01\n")
                 f.write(f"DASHBOARD_USER=admin\n")

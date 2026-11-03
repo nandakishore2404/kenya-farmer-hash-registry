@@ -50,7 +50,7 @@ class FarmerEntity(Base):
 class TokenAlias(Base):
     """
     Maps cryptographic digests D to an entity.
-    Supports multi-key migration: VOPRF v1, Legacy HMAC, and future National Farmer ID.
+    Supports multi-key migration: VOPRF secp256k1, Legacy HMAC, and future National Farmer ID.
     D = HMAC-SHA256(SERVER_KEY, LP("oan-registry-v1") || LP(pilot_id) || LP(key_id) || T)
     """
     __tablename__ = "token_alias"
@@ -58,8 +58,8 @@ class TokenAlias(Base):
     alias_id = Column(String(36), primary_key=True, default=generate_uuid)
     entity_id = Column(String(36), ForeignKey("farmer_entity.entity_id", ondelete="CASCADE"), nullable=False, index=True)
     pilot_id = Column(String(50), nullable=False, default="kenya-pilot")
-    scheme = Column(String(50), nullable=False)  # 'voprf_ristretto255', 'legacy_hmac', 'kenya_kfr'
-    key_id = Column(String(50), nullable=False)  # e.g. 'ke-pilot-v2'
+    scheme = Column(String(50), nullable=False)  # 'voprf_secp256k1', 'legacy_hmac', 'kenya_kfr'
+    key_id = Column(String(50), nullable=False)  # e.g. 'ke-pilot-v2', 'ke-pilot-v4'
     digest_d = Column(String(64), nullable=False, unique=True, index=True)
     status = Column(String(30), default="active", nullable=False)  # 'active', 'compromised_v1_legacy'
     created_at = Column(DateTime, default=utcnow, nullable=False)
@@ -69,6 +69,23 @@ class TokenAlias(Base):
     )
 
     entity = relationship("FarmerEntity", back_populates="aliases")
+
+
+class PartnerEvaluationQuota(Base):
+    """
+    Independent persistent rolling evaluation quota tracking per partner.
+    Survives server restarts and enforces rolling-window rate limits independently per evaluator party.
+    """
+    __tablename__ = "partner_evaluation_quota"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    partner_id = Column(String(50), ForeignKey("partner.partner_id"), nullable=False, index=True)
+    evaluated_at = Column(DateTime, default=utcnow, nullable=False, index=True)
+    batch_size = Column(Integer, nullable=False, default=1)
+
+    __table_args__ = (
+        Index("ix_partner_quota_window", "partner_id", "evaluated_at"),
+    )
 
 
 class PartnerAssociation(Base):

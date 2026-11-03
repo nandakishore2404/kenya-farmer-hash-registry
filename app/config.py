@@ -1,5 +1,5 @@
 import os
-from typing import Optional
+from typing import Optional, List
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings
 
@@ -76,8 +76,22 @@ class Settings(BaseSettings):
     DATABASE_URL: Optional[str] = None
     SERVER_KEY: Optional[SensitiveStr] = None
     ADMIN_KEY: Optional[SensitiveStr] = None
-    EVALUATOR_SECRET_K: Optional[SensitiveStr] = None
-    EVALUATOR_KEY_ID: str = "ke-pilot-v3"
+
+    # 2-of-3 Split-Key Evaluator Configuration
+    EVALUATOR_PARTY_ID: Optional[str] = "safic"  # safic | operator | independent
+    EVALUATOR_PARTY_INDEX: Optional[int] = 1     # 1 | 2 | 3
+    EVALUATOR_SHARE_K: Optional[SensitiveStr] = None  # This party's 64-hex secret share
+    EVALUATOR_KEY_ID: str = "ke-pilot-v4"
+    EVALUATOR_PEER_PUBKEYS: Optional[str] = None  # Comma-separated base64 Ki for parties 1, 2, 3
+    EVALUATOR_AGGREGATE_PUB: Optional[str] = None # Pinned base64 K
+
+    # Quota and rate-limiting configuration
+    PARTNER_DAILY_QUOTA: int = 10000
+    PARTNER_QUOTA_WINDOW_HOURS: int = 24
+    MAX_CLOCK_SKEW_SECONDS: int = 900
+    SIM_REASSIGNMENT_DORMANCY_DAYS: int = 90
+    CURVE_BACKEND: str = "pure_python"  # pure_python | native
+
     PILOT_START_DATE: str = "2026-10-01"
     SUPPRESSION_THRESHOLD: int = 5  # Privacy k-anonymity rule: suppress counts < 5
     DASHBOARD_USER: str = "admin"
@@ -95,46 +109,69 @@ class Settings(BaseSettings):
     def validate_production_security(self):
         """
         Enforce strict validation across environments.
-        Refuses startup if keys are missing, shorter than 32 characters, contain CHANGE_ME,
-        match known committed placeholders, use SQLite in production, or enable test partner seeding.
+        Refuses startup if single-key EVALUATOR_SECRET_K is present, shares are invalid/burned,
+        peer public keys do not match, or SQLite is used in production.
         """
-        # Evaluator Secret Key validation (Mandatory in ALL environments - no literal fallback)
-        raw_k = self.EVALUATOR_SECRET_K.get_secret_value() if self.EVALUATOR_SECRET_K else None
-        if not raw_k or not raw_k.strip():
+        # CRITICAL REGRESSION GATE: Refuse startup if deprecated EVALUATOR_SECRET_K is present anywhere
+        raw_secret_k = os.environ.get("EVALUATOR_SECRET_K")
+        if raw_secret_k is not None:
             raise ValueError(
-                "Evaluator configuration error: EVALUATOR_SECRET_K is required and cannot be empty. "
-                "In production SAFIC deployments, this must be loaded from CloudHSM / Vault transit."
-            )
-        evaluator_k_clean = raw_k.strip()
-        if "change_me" in evaluator_k_clean.lower() or evaluator_k_clean.lower() in COMMITTED_INSECURE_KEYS:
-            raise ValueError(
-                "Evaluator configuration error: EVALUATOR_SECRET_K matches a known burned or insecure placeholder key."
+                "FATAL CONFIGURATION ERROR: EVALUATOR_SECRET_K is present in the environment. "
+                "The system has migrated to a 2-of-3 split-key architecture. "
+                "EVALUATOR_SECRET_K is strictly forbidden and must be removed from all configurations."
             )
 
-        # N1: Parse scalar to int mod N_ORDER and compare against burned scalar ints (prevents re-encoding bypass)
-        try:
-            parsed_k = int(evaluator_k_clean, 16)
-            if (parsed_k % N_ORDER) in BURNED_SCALAR_INTS:
-                raise ValueError(
-                    "Evaluator configuration error: EVALUATOR_SECRET_K matches a known burned or insecure placeholder key."
-                )
-        except ValueError as e:
-            if "matches a known burned or insecure placeholder key" in str(e):
-                raise
+        # Split-Key Evaluator Share Validation
+        if self.EVALUATOR_SHARE_K is not None:
+            raw_share = self.EVALUATOR_SHARE_K.get_secret_value() if hasattr(self.EVALUATOR_SHARE_K, "get_secret_value") else str(self.EVALUATOR_SHARE_K)
+            clean_share = raw_share.strip()
+            if not clean_share:
+                raise ValueError("Evaluator configuration error: EVALUATOR_SHARE_K cannot be empty.")
 
-        # N3: Accept exactly one documented encoding: 64 hex characters, optional 0x prefix
-        hex_k = evaluator_k_clean[2:] if evaluator_k_clean.startswith(("0x", "0X")) else evaluator_k_clean
-        if len(hex_k) != 64 or not all(c in "0123456789abcdefABCDEF" for c in hex_k):
-            raise ValueError(
-                "Evaluator configuration error: EVALUATOR_SECRET_K must be exactly 64 hexadecimal characters "
-                "(optional '0x' prefix). Decimal or other encodings are not accepted."
-            )
+            if "change_me" in clean_share.lower() or clean_share.lower() in COMMITTED_INSECURE_KEYS:
+                raise ValueError("Evaluator configuration error: EVALUATOR_SHARE_K matches a known burned or insecure placeholder key.")
 
-        k_val = int(hex_k, 16) % N_ORDER
-        if k_val == 0:
-            raise ValueError("Evaluator configuration error: EVALUATOR_SECRET_K cannot be zero modulo curve order.")
+            hex_share = clean_share[2:] if clean_share.startswith(("0x", "0X")) else clean_share
+            if len(hex_share) != 64 or not all(c in "0123456789abcdefABCDEF" for c in hex_share):
+                raise ValueError("Evaluator configuration error: EVALUATOR_SHARE_K must be exactly 64 hexadecimal characters.")
 
-        if self.ENV != "development":
+            share_val = int(hex_share, 16) % N_ORDER
+            if share_val == 0:
+                raise ValueError("Evaluator configuration error: EVALUATOR_SHARE_K cannot be zero modulo curve order.")
+
+            if share_val in BURNED_SCALAR_INTS:
+                raise ValueError("Evaluator configuration error: EVALUATOR_SHARE_K matches a known burned scalar from public repository history.")
+
+            # Validate peer public keys configuration
+            if self.EVALUATOR_PEER_PUBKEYS:
+                peer_keys = [k.strip() for k in self.EVALUATOR_PEER_PUBKEYS.split(",") if k.strip()]
+                if len(peer_keys) != 3:
+                    raise ValueError(f"Evaluator configuration error: EVALUATOR_PEER_PUBKEYS must contain exactly 3 keys, found {len(peer_keys)}.")
+
+                # If party index is configured (1, 2, or 3), verify derived Ki matches corresponding peer pubkey
+                if self.EVALUATOR_PARTY_INDEX in (1, 2, 3):
+                    from app.crypto.voprf import point_mul, GENERATOR_G, GroupElement
+                    import base64
+                    derived_pt = point_mul(share_val, GENERATOR_G.pt)
+                    derived_b64 = base64.b64encode(GroupElement(derived_pt).to_bytes()).decode("utf-8")
+                    expected_b64 = peer_keys[self.EVALUATOR_PARTY_INDEX - 1]
+                    if derived_b64 != expected_b64:
+                        raise ValueError(
+                            f"Evaluator configuration error: derived Ki for party index {self.EVALUATOR_PARTY_INDEX} "
+                            f"does not match published peer public key '{expected_b64}'."
+                        )
+
+        # Curve Backend Validation
+        backend = (self.CURVE_BACKEND or "pure_python").strip().lower()
+        if backend not in ("pure_python", "native"):
+            raise ValueError(f"Invalid CURVE_BACKEND '{self.CURVE_BACKEND}'. Must be 'pure_python' or 'native'.")
+
+        if self.ENV == "production":
+            if backend == "native":
+                from app.crypto.voprf import _NATIVE_AVAILABLE
+                if not _NATIVE_AVAILABLE:
+                    raise ValueError("Production configuration error: CURVE_BACKEND='native' is configured but native bindings are unavailable.")
+
             # 1. SERVER_KEY
             server_key_str = self.SERVER_KEY.get_secret_value() if self.SERVER_KEY else None
             if not server_key_str or not server_key_str.strip():
@@ -160,46 +197,26 @@ class Settings(BaseSettings):
                 raise ValueError("Production configuration error: ADMIN_KEY matches a known insecure committed placeholder.")
 
             # 3. DATABASE_URL
-            if not self.DATABASE_URL:
-                raise ValueError("Production configuration error: DATABASE_URL is required.")
-            if "CHANGE_ME" in self.DATABASE_URL:
+            if not self.DATABASE_URL or not self.DATABASE_URL.strip():
+                raise ValueError("Production configuration error: DATABASE_URL is required and cannot be empty.")
+            db_clean = self.DATABASE_URL.strip().lower()
+            if "change_me" in db_clean:
                 raise ValueError("Production configuration error: DATABASE_URL contains placeholder 'CHANGE_ME'.")
-            if self.DATABASE_URL.lower().startswith("sqlite"):
-                raise ValueError("Production configuration error: SQLite cannot be used in production.")
+            if "sqlite" in db_clean:
+                raise ValueError("Production configuration error: SQLite cannot be used in production (strictly forbidden).")
 
             # 4. DASHBOARD_PASSWORD
-            dash_pwd_str = self.DASHBOARD_PASSWORD.get_secret_value() if self.DASHBOARD_PASSWORD else None
-            if not dash_pwd_str or not dash_pwd_str.strip():
-                raise ValueError("Production configuration error: DASHBOARD_PASSWORD is required in production.")
-            dash_pwd_clean = dash_pwd_str.strip()
-            if "CHANGE_ME" in dash_pwd_clean:
-                raise ValueError("Production configuration error: DASHBOARD_PASSWORD contains placeholder 'CHANGE_ME'.")
-            if dash_pwd_clean in COMMITTED_INSECURE_KEYS:
-                raise ValueError("Production configuration error: DASHBOARD_PASSWORD matches a known insecure committed placeholder.")
-            if self.DASHBOARD_USER == "admin" and len(dash_pwd_clean) < 16:
-                raise ValueError("Production configuration error: DASHBOARD_PASSWORD must be at least 16 characters for admin user.")
+            dash_pw_str = self.DASHBOARD_PASSWORD.get_secret_value() if self.DASHBOARD_PASSWORD else None
+            if not dash_pw_str or not dash_pw_str.strip():
+                raise ValueError("Production configuration error: DASHBOARD_PASSWORD is required and cannot be empty.")
+            dash_pw_clean = dash_pw_str.strip()
+            if "change_me" in dash_pw_clean.lower() or dash_pw_clean in COMMITTED_INSECURE_KEYS:
+                raise ValueError("Production configuration error: DASHBOARD_PASSWORD matches a known insecure placeholder.")
+            if self.DASHBOARD_USER == "admin" and len(dash_pw_clean) < 16:
+                raise ValueError("Production configuration error: DASHBOARD_PASSWORD must be at least 16 characters.")
 
             # 5. SEED_TEST_PARTNERS
             if self.SEED_TEST_PARTNERS:
                 raise ValueError("Production configuration error: SEED_TEST_PARTNERS must be False in production.")
-
-        else:
-            # In development, provide safe fallbacks if not explicitly provided
-            used_fallbacks = []
-            if not self.SERVER_KEY:
-                self.SERVER_KEY = SensitiveStr("dev_server_rekey_key_default_32_bytes_long!!")
-                used_fallbacks.append("SERVER_KEY")
-            if not self.ADMIN_KEY:
-                self.ADMIN_KEY = SensitiveStr("dev_admin_key_default_32_bytes_long_xyz!!")
-                used_fallbacks.append("ADMIN_KEY")
-            if not self.DATABASE_URL:
-                self.DATABASE_URL = "sqlite:///./registry.db"
-                used_fallbacks.append("DATABASE_URL")
-            if not self.DASHBOARD_PASSWORD:
-                self.DASHBOARD_PASSWORD = SensitiveStr("dev_dashboard_password")
-                used_fallbacks.append("DASHBOARD_PASSWORD")
-            if used_fallbacks:
-                print(f"\n[SECURITY WARNING] Development fallback keys in use: {', '.join(used_fallbacks)}. Never run in production with these keys.\n")
-        return self
 
 settings = Settings()

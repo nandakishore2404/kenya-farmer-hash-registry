@@ -69,7 +69,6 @@ class AsyncAuditWorker:
             if self._thread and self._thread.is_alive():
                 return
             self._stop_event.clear()
-            self._pause_event.set()
             self._thread = threading.Thread(
                 target=self._run_worker,
                 name="AsyncAuditWorkerThread",

@@ -41,7 +41,7 @@ def test_signature_v2_and_replay_rejection(client):
         method="POST",
         path="/v1/farmers",
         body=body,
-        timestamp=int(time.time()) - 400
+        timestamp=int(time.time()) - 1000
     )
     old_headers["Content-Type"] = "application/json"
     res_old = client.post("/v1/farmers", content=body, headers=old_headers)

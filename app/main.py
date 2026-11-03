@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from fastapi import FastAPI
 from app.config import settings
 from app.database import engine, Base, SessionLocal
@@ -88,3 +89,11 @@ app.include_router(consent_router)
 def health_check():
     return {"status": "ok", "app": settings.APP_NAME}
 
+@app.get("/v1/time")
+def server_time():
+    """Unauthenticated server timestamp for device NTP/clock drift synchronization."""
+    now = datetime.now(timezone.utc)
+    return {
+        "server_timestamp": int(now.timestamp()),
+        "iso": now.isoformat()
+    }
