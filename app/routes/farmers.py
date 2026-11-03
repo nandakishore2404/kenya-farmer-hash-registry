@@ -147,38 +147,47 @@ def process_farmer_registration(
             assoc.status = "active"
 
     farmer = db.query(Farmer).filter(Farmer.hash_key == hash_key).first()
+    is_new_farmer = False
     
     if not farmer:
-        new_farmer = Farmer(
-            hash_key=hash_key,
-            gender=gender,
-            age_band=age_band,
-            county_code=county_code,
-            entity_id=resolved_entity_id,
-            created_at=now,
-            updated_at=now
-        )
-        db.add(new_farmer)
-        db.flush()
-        
-        new_link = PartnerLink(
-            farmer_id=new_farmer.id,
-            partner_id=partner_id,
-            linked_at=ts,
-            received_at=now,
-            status="active"
-        )
-        db.add(new_link)
-        
-        audit = AuditLog(
-            action="register_first",
-            partner_id=partner_id,
-            farmer_id=new_farmer.id,
-            entity_id=resolved_entity_id,
-            at=now
-        )
-        db.add(audit)
-    else:
+        try:
+            with db.begin_nested():
+                new_farmer = Farmer(
+                    hash_key=hash_key,
+                    gender=gender,
+                    age_band=age_band,
+                    county_code=county_code,
+                    entity_id=resolved_entity_id,
+                    created_at=now,
+                    updated_at=now
+                )
+                db.add(new_farmer)
+                db.flush()
+                
+                new_link = PartnerLink(
+                    farmer_id=new_farmer.id,
+                    partner_id=partner_id,
+                    linked_at=ts,
+                    received_at=now,
+                    status="active"
+                )
+                db.add(new_link)
+                
+                audit = AuditLog(
+                    action="register_first",
+                    partner_id=partner_id,
+                    farmer_id=new_farmer.id,
+                    entity_id=resolved_entity_id,
+                    at=now
+                )
+                db.add(audit)
+                farmer = new_farmer
+                is_new_farmer = True
+        except IntegrityError:
+            # Race condition: another thread inserted Farmer with this hash_key concurrently
+            farmer = db.query(Farmer).filter(Farmer.hash_key == hash_key).first()
+
+    if farmer and not is_new_farmer:
         link = db.query(PartnerLink).filter(
             PartnerLink.farmer_id == farmer.id,
             PartnerLink.partner_id == partner_id
@@ -207,14 +216,19 @@ def process_farmer_registration(
                 )
                 db.add(audit)
         else:
-            new_link = PartnerLink(
-                farmer_id=farmer.id,
-                partner_id=partner_id,
-                linked_at=ts,
-                received_at=now,
-                status="active"
-            )
-            db.add(new_link)
+            try:
+                with db.begin_nested():
+                    new_link = PartnerLink(
+                        farmer_id=farmer.id,
+                        partner_id=partner_id,
+                        linked_at=ts,
+                        received_at=now,
+                        status="active"
+                    )
+                    db.add(new_link)
+                    db.flush()
+            except IntegrityError:
+                pass
             audit = AuditLog(
                 action="register_link_existing",
                 partner_id=partner_id,
@@ -223,6 +237,7 @@ def process_farmer_registration(
                 at=now
             )
             db.add(audit)
+    return resolved_entity_id
 
 @router.post("", response_model=StatusAcceptedResponse)
 def register_farmer(
@@ -232,9 +247,9 @@ def register_farmer(
 ):
     """
     Registers or links a farmer using incoming partner hash (Legacy HMAC).
-    ALWAYS returns exactly {"status":"accepted"} with HTTP 200 for valid requests.
+    ALWAYS returns {"status":"accepted", "entity_id": entity_id} with HTTP 200 for valid requests.
     """
-    process_farmer_registration(
+    entity_id = process_farmer_registration(
         db=db,
         partner_id=partner.partner_id,
         incoming_hash=payload.hash,
@@ -244,7 +259,7 @@ def register_farmer(
         onboarded_at=payload.onboarded_at
     )
     db.commit()
-    return StatusAcceptedResponse(status="accepted")
+    return StatusAcceptedResponse(status="accepted", entity_id=entity_id)
 
 @router.post("/token", response_model=VOPRFFarmerRegisterResponse)
 def register_farmer_voprf_token(
