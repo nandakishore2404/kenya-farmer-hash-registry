@@ -25,7 +25,7 @@ import base64
 import sqlite3
 import secrets
 import hashlib
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Union
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
@@ -34,7 +34,9 @@ from app.crypto.voprf import (
     VOPRFEngine,
     GroupElement,
     verify_dleq_proof,
-    GENERATOR_G
+    GENERATOR_G,
+    combine_evaluations,
+    combine_public_keys
 )
 
 KENYAN_MOBILE_REGEX = re.compile(r"^\+254[71]\d{8}$")
@@ -235,20 +237,47 @@ class OfflineStoreAndForwardQueue:
             return EphemeralStoreAndForwardQueue()
         return EncryptedStoreAndForwardQueue(db_path=db_path, encryption_key=encryption_key)
 
+class ThresholdEvaluationResult(tuple):
+    """
+    Result of threshold evaluation containing (token_bytes, unblinded_element).
+    Subclasses tuple and provides convenience properties and byte-level comparison.
+    """
+    def __new__(cls, token_bytes: bytes, unblinded_element: bytes):
+        return super().__new__(cls, (token_bytes, unblinded_element))
+
+    @property
+    def token_bytes(self) -> bytes:
+        return self[0]
+
+    @property
+    def unblinded_element(self) -> bytes:
+        return self[1]
+
+    def __eq__(self, other):
+        if isinstance(other, bytes):
+            return self[0] == other
+        return super().__eq__(other)
+
+    def __hash__(self):
+        return hash(self[0])
+
 class OANFarmerVOPRFClient:
     """
     Client for field applications and partner backends.
+    Supports both single-party evaluation and RFC 9497 Shamir 2-of-3 threshold evaluation.
     """
     def __init__(
         self,
         pilot_id: str,
         key_id: str,
         evaluator_public_key: GroupElement,
+        peer_public_keys: Optional[Dict[int, GroupElement]] = None,
         offline_queue: Optional[BaseOfflineQueue] = None
     ):
         self.pilot_id = pilot_id
         self.key_id = key_id
         self.evaluator_public_key = evaluator_public_key
+        self.peer_public_keys: Dict[int, GroupElement] = peer_public_keys or {}
         self.offline_queue = offline_queue if offline_queue is not None else EphemeralStoreAndForwardQueue()
 
     def prepare_blinded_registration(self, phone: str) -> Tuple[bytes, GroupElement, int]:
@@ -286,4 +315,105 @@ class OANFarmerVOPRFClient:
         # 3. Finalize Token T
         token_t = VOPRFEngine.finalize(x, N)
         return token_t
+
+    def process_threshold_evaluation_response(
+        self,
+        x: Union[str, bytes],
+        B: GroupElement,
+        r: int,
+        responses: Union[Dict[int, Tuple[bytes, bytes]], List[Tuple[int, Tuple[bytes, bytes]]]]
+    ) -> Tuple[bytes, bytes]:
+        """
+        Processes threshold evaluation responses from at least 2 distinct Evaluator parties (RFC 9497 Shamir 2-of-3).
+        Validates DLEQ proofs against each party's published Ki, verifies consistency with aggregate K,
+        combines evaluations via Lagrange coefficients, unblinds, and finalizes.
+
+        Args:
+            x: Input phone number string or encoded bytes.
+            B: Blinded group element.
+            r: Blinding scalar.
+            responses: Mapping of party_index (1, 2, 3) -> (Z_i_bytes, proof_i_bytes),
+                       or list of (party_index, (Z_i_bytes, proof_i_bytes)).
+
+        Returns:
+            Tuple[bytes, bytes]: (token_bytes, unblinded_element_bytes)
+        """
+        if not responses:
+            raise CryptographicVerificationError("Responses must be non-empty.")
+
+        if isinstance(responses, (list, tuple)):
+            raw_indices = [item[0] for item in responses]
+            if len(raw_indices) != len(set(raw_indices)):
+                raise CryptographicVerificationError("Duplicate party indices detected in threshold response.")
+            resp_dict = {item[0]: item[1] for item in responses}
+        elif isinstance(responses, dict):
+            resp_dict = responses
+        else:
+            raise CryptographicVerificationError("Responses must be a dict or list of pairs.")
+
+        distinct_indices = list(resp_dict.keys())
+        if len(distinct_indices) < 2:
+            raise CryptographicVerificationError(
+                f"Threshold evaluation requires at least 2 distinct party responses, got {len(distinct_indices)}."
+            )
+
+        for idx in distinct_indices:
+            if not isinstance(idx, int) or idx not in (1, 2, 3):
+                raise CryptographicVerificationError(f"Invalid party index {idx}. Must be 1, 2, or 3.")
+
+        if isinstance(x, str):
+            if x.startswith("+") or any(c.isdigit() for c in x):
+                try:
+                    norm = normalise_kenyan_phone(x)
+                    x_bytes = VOPRFEngine.encode_input(self.pilot_id, norm)
+                except Exception:
+                    x_bytes = x.encode("utf-8")
+            else:
+                x_bytes = x.encode("utf-8")
+        else:
+            x_bytes = x
+
+        validated_evals: List[Tuple[int, GroupElement]] = []
+        participating_keys: List[Tuple[int, GroupElement]] = []
+
+        for idx, (z_i_bytes, proof_i_bytes) in resp_dict.items():
+            if idx not in self.peer_public_keys:
+                raise CryptographicVerificationError(
+                    f"Missing published peer public key Ki for party index {idx} in client configuration."
+                )
+            k_i = self.peer_public_keys[idx]
+            z_i = GroupElement.from_bytes(z_i_bytes)
+
+            is_valid = verify_dleq_proof(
+                GENERATOR_G,
+                k_i,
+                B,
+                z_i,
+                proof_i_bytes
+            )
+            if not is_valid:
+                raise CryptographicVerificationError(
+                    f"Evaluator DLEQ proof verification failed for party index {idx}! Potential key tampering detected."
+                )
+
+            validated_evals.append((idx, z_i))
+            participating_keys.append((idx, k_i))
+
+        # Check aggregate consistency with combine_public_keys matching self.evaluator_public_key (aggregate K)
+        reconstructed_K = combine_public_keys(participating_keys)
+        if reconstructed_K.pt != self.evaluator_public_key.pt:
+            raise CryptographicVerificationError(
+                "Reconstructed aggregate public key does not match pinned evaluator public key!"
+            )
+
+        # Combine evaluations via Lagrange interpolation
+        combined_Z = combine_evaluations(validated_evals)
+
+        # Unblind N = r^(-1) * Z
+        N = VOPRFEngine.unblind(combined_Z, r)
+
+        # Finalize Token T
+        token_t = VOPRFEngine.finalize(x_bytes, N)
+
+        return ThresholdEvaluationResult(token_t, N.to_bytes())
 

@@ -24,7 +24,7 @@ from typing import Dict, List, Any
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from simulator.generator import generate_synthetic_dataset
-from app.crypto.voprf import VOPRFEngine, GroupElement, GENERATOR_G
+from app.crypto.voprf import VOPRFEngine, GroupElement, GENERATOR_G, N_ORDER, point_mul
 from app.routes.evaluator import (
     evaluate_blinded_batch,
     EvaluationRequest,
@@ -87,11 +87,24 @@ def run_voprf_simulation(total_farmers: int = 3000):
     print(f"      - Dual SIM card holders: {summary['second_sim_individuals']} farmers")
     print(f"      - Planned consent withdrawals: {summary['planned_withdrawals']}")
 
-    # Initialize Client SDKs per partner
-    client = OANFarmerVOPRFClient("kenya-pilot", EVALUATOR_KEY_ID, EVALUATOR_PUBLIC_KEY)
+    # Step 2.5: Initialize 2-of-3 Shamir Threshold Evaluators & Client SDK
+    import secrets
+    sim_k = secrets.randbelow(N_ORDER - 1) + 1
+    sim_a = secrets.randbelow(N_ORDER - 1) + 1
+    sim_s1 = (sim_k + sim_a * 1) % N_ORDER
+    sim_s2 = (sim_k + sim_a * 2) % N_ORDER
+    sim_s3 = (sim_k + sim_a * 3) % N_ORDER
+
+    sim_K = GroupElement(point_mul(sim_k, GENERATOR_G.pt))
+    sim_K1 = GroupElement(point_mul(sim_s1, GENERATOR_G.pt))
+    sim_K2 = GroupElement(point_mul(sim_s2, GENERATOR_G.pt))
+    sim_K3 = GroupElement(point_mul(sim_s3, GENERATOR_G.pt))
+
+    peer_keys = {1: sim_K1, 2: sim_K2, 3: sim_K3}
+    client = OANFarmerVOPRFClient("kenya-pilot", EVALUATOR_KEY_ID, sim_K, peer_public_keys=peer_keys)
 
     # Step 3: Execute VOPRF Pipeline for all registrations
-    print(f"\n[2/5] Executing RFC 9497 Blinding, Evaluation, and Registry Deduplication...")
+    print(f"\n[2/5] Executing RFC 9497 Threshold Blinding, Multi-Party Evaluation, and Deduplication...")
     start_time = time.time()
 
     token_cache = {} # Cache tokens per phone to simulate real-world partner cache
@@ -111,25 +124,21 @@ def run_voprf_simulation(total_farmers: int = 3000):
         # 1. Normalise phone
         norm_phone = normalise_kenyan_phone(raw_phone)
 
-        # 2. Derive token via VOPRF
+        # 2. Derive token via 2-of-3 VOPRF threshold evaluation
         if norm_phone not in token_cache:
             x, B, r = client.prepare_blinded_registration(norm_phone)
-            b_b64 = base64.b64encode(B.to_bytes()).decode("utf-8")
 
-            # Call Evaluator
-            eval_req = EvaluationRequest(
-                pilot_id="kenya-pilot",
-                key_id=EVALUATOR_KEY_ID,
-                request_id=str(uuid.uuid4()),
-                blinded_elements=[b_b64]
-            )
-            eval_resp = evaluate_blinded_batch(eval_req, partner=partner_obj)
-            z_bytes = base64.b64decode(eval_resp.evaluated_elements[0])
-            proof_bytes = base64.b64decode(eval_resp.proofs[0])
+            # Concurrent simulation of 2 Evaluator parties (Safic: party 1, Operator: party 2)
+            Z1, proof1 = VOPRFEngine.evaluate(sim_s1, B, sim_K1)
+            Z2, proof2 = VOPRFEngine.evaluate(sim_s2, B, sim_K2)
 
-            # Client unblinds & finalizes
-            token_t = client.process_evaluation_response(x, B, r, z_bytes, proof_bytes)
-            token_cache[norm_phone] = base64.b64encode(token_t).decode("utf-8")
+            responses = {
+                1: (Z1.to_bytes(), proof1),
+                2: (Z2.to_bytes(), proof2)
+            }
+            # Client combines threshold evaluations, validates DLEQ proofs, unblinds & finalizes
+            token_t = client.process_threshold_evaluation_response(x, B, r, responses)
+            token_cache[norm_phone] = base64.b64encode(token_t.token_bytes).decode("utf-8")
 
         token_b64 = token_cache[norm_phone]
 
