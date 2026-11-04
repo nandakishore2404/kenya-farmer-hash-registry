@@ -1,6 +1,6 @@
 import os
 from typing import Optional, List
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings
 
 N_ORDER = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
@@ -9,6 +9,7 @@ BURNED_SCALARS_HEX = {
     "7a2f3e1b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f",
     "5d8a9f1b2c3e4d5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f91",
     "5cfa51060880d8d043bf65b215457a97ade09f39b2d00ee6de4083ee4d87c7a8",
+    "9fe8ad784aa9c596b091060eeaf91ef3330eae2954251a91018aa76699983a85",
 }
 BURNED_SCALAR_INTS = {int(h, 16) % N_ORDER for h in BURNED_SCALARS_HEX}
 
@@ -43,6 +44,8 @@ COMMITTED_INSECURE_KEYS = {
     "5d8a9f1b2c3e4d5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f91",
     "0x5cfa51060880d8d043bf65b215457a97ade09f39b2d00ee6de4083ee4d87c7a8",
     "5cfa51060880d8d043bf65b215457a97ade09f39b2d00ee6de4083ee4d87c7a8",
+    "0x9fe8ad784aa9c596b091060eeaf91ef3330eae2954251a91018aa76699983a85",
+    "9fe8ad784aa9c596b091060eeaf91ef3330eae2954251a91018aa76699983a85",
 }
 
 class SensitiveStr(SecretStr):
@@ -76,6 +79,17 @@ class SensitiveStr(SecretStr):
 class Settings(BaseSettings):
     APP_NAME: str = "Farmer Hash Registry"
     ENV: str = "production"
+
+    @field_validator("ENV", mode="before")
+    @classmethod
+    def normalize_env(cls, v):
+        if not v or not isinstance(v, str):
+            raise ValueError("ENV must be a non-empty string.")
+        norm = v.strip().lower()
+        valid_envs = {"production", "development", "staging"}
+        if norm not in valid_envs:
+            raise ValueError(f"Invalid ENV '{v}'. Must be one of {sorted(list(valid_envs))}.")
+        return norm
     DATABASE_URL: Optional[str] = None
     SERVER_KEY: Optional[SensitiveStr] = None
     ADMIN_KEY: Optional[SensitiveStr] = None
@@ -184,7 +198,7 @@ class Settings(BaseSettings):
                 raise ValueError("Production configuration error: SERVER_KEY contains placeholder 'CHANGE_ME'.")
             if len(server_key_clean) < 32:
                 raise ValueError("Production configuration error: SERVER_KEY must be at least 32 characters long.")
-            if server_key_clean in COMMITTED_INSECURE_KEYS:
+            if server_key_clean in COMMITTED_INSECURE_KEYS or server_key_clean.lower() == "none":
                 raise ValueError("Production configuration error: SERVER_KEY matches a known insecure committed placeholder.")
 
             # 2. ADMIN_KEY

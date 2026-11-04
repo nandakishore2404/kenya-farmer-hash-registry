@@ -15,9 +15,25 @@ os.environ["ADMIN_KEY"] = "test_admin_key_super_secret"
 os.environ["EVALUATOR_KEY_ID"] = "ke-pilot-v4"
 os.environ["EVALUATOR_PARTY_ID"] = "safic"
 os.environ["EVALUATOR_PARTY_INDEX"] = "1"
-os.environ["EVALUATOR_SHARE_K"] = "9fe8ad784aa9c596b091060eeaf91ef3330eae2954251a91018aa76699983a85"
-os.environ["EVALUATOR_PEER_PUBKEYS"] = "BJ8m3hJug+Y0V7hR3rH84fa+5AIAQsVVaCaDTGfGTp56NzsOk2HZWOyrjGRbykUNlxVSqx24LC9mzf9T2FKm+zU=,BLsrheMvOj3EeWaaXImEgn7qplgNfOe0Ds6383CkKMvt67srGKCfMNJQ5aOe5+aagI0F9Yev8/gecI+7pbR1M4E=,BL0Geozqg73DQS/sOR+sFyzgpO4YYWS949WCcan5E1JWRbIE4qe/UZXT/gffBoaV22pkmUp4/9d6LqFWareOMXY="
-os.environ["EVALUATOR_AGGREGATE_PUB"] = "BA1RzbWdkHqeSemHj3/wi6w6OOw0Nqxz9bf9xeos0UIKaO6Vv+vKZCZytQC460fvbMxzhljJ8OAlP+OYcWQwWhI="
+import base64
+import secrets
+from app.crypto.voprf import N_ORDER, GENERATOR_G, point_mul, GroupElement
+
+# Ephemeral dynamic 2-of-3 Shamir test key generation
+_test_k = secrets.randbelow(N_ORDER - 1) + 1
+_test_a = secrets.randbelow(N_ORDER - 1) + 1
+_test_s1 = (_test_k + _test_a * 1) % N_ORDER
+_test_s2 = (_test_k + _test_a * 2) % N_ORDER
+_test_s3 = (_test_k + _test_a * 3) % N_ORDER
+
+_test_K = GroupElement(point_mul(_test_k, GENERATOR_G.pt))
+_test_K1 = GroupElement(point_mul(_test_s1, GENERATOR_G.pt))
+_test_K2 = GroupElement(point_mul(_test_s2, GENERATOR_G.pt))
+_test_K3 = GroupElement(point_mul(_test_s3, GENERATOR_G.pt))
+
+os.environ["EVALUATOR_SHARE_K"] = f"{_test_s1:064x}"
+os.environ["EVALUATOR_PEER_PUBKEYS"] = f"{base64.b64encode(_test_K1.to_bytes()).decode()},{base64.b64encode(_test_K2.to_bytes()).decode()},{base64.b64encode(_test_K3.to_bytes()).decode()}"
+os.environ["EVALUATOR_AGGREGATE_PUB"] = base64.b64encode(_test_K.to_bytes()).decode()
 os.environ["CURVE_BACKEND"] = "pure_python"
 
 from app.config import settings
