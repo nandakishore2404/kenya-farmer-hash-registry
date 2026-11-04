@@ -54,7 +54,6 @@ class VOPRFFarmerRegisterResponse(BaseModel):
 
 class StatusAcceptedResponse(BaseModel):
     status: Literal["accepted"] = "accepted"
-    entity_id: Optional[str] = None
 
 class UploadResponse(BaseModel):
     rows_received: int

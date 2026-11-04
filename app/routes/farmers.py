@@ -249,7 +249,7 @@ def register_farmer(
     Registers or links a farmer using incoming partner hash (Legacy HMAC).
     ALWAYS returns {"status":"accepted", "entity_id": entity_id} with HTTP 200 for valid requests.
     """
-    entity_id = process_farmer_registration(
+    process_farmer_registration(
         db=db,
         partner_id=partner.partner_id,
         incoming_hash=payload.hash,
@@ -259,7 +259,7 @@ def register_farmer(
         onboarded_at=payload.onboarded_at
     )
     db.commit()
-    return StatusAcceptedResponse(status="accepted", entity_id=entity_id)
+    return StatusAcceptedResponse(status="accepted")
 
 @router.post("/token", response_model=VOPRFFarmerRegisterResponse)
 def register_farmer_voprf_token(

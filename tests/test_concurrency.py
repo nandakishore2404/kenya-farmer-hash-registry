@@ -74,18 +74,11 @@ def test_concurrent_farmer_insert_on_duplicate_hash_key_returns_200(setup_test_d
     assert len(results) == 50, f"Expected 50 responses, got {len(results)}"
 
     # All 50 threads must return HTTP 200 with status accepted
-    entity_ids = set()
     for status_code, data in results:
         assert status_code == 200, f"Expected status 200, got {status_code}: {data}"
-        assert data.get("status") == "accepted"
-        entity_id = data.get("entity_id")
-        assert entity_id is not None
-        entity_ids.add(entity_id)
+        assert data == {"status": "accepted"}
 
-    # Exactly one unique entity_id shared across all 50 responses
-    assert len(entity_ids) == 1, f"Expected exactly 1 common entity_id, found {entity_ids}"
-
-    # Verify database consistency
+    # Verify database consistency: exactly 1 entity, 1 farmer, 1 alias
     db = TestingSessionLocal()
     try:
         final_hash_key = rekey_hash(test_hash)
@@ -96,7 +89,6 @@ def test_concurrent_farmer_insert_on_duplicate_hash_key_returns_200(setup_test_d
         assert len(aliases) == 1, f"Expected exactly 1 TokenAlias record, found {len(aliases)}"
 
         resolved_entity_id = aliases[0].entity_id
-        assert list(entity_ids)[0] == resolved_entity_id
         assert farmers[0].entity_id == resolved_entity_id
     finally:
         db.close()
