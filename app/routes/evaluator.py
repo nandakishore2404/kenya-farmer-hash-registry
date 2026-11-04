@@ -83,7 +83,7 @@ def load_evaluator_share():
     pub_elem = GroupElement(pub_pt)
 
     env = getattr(settings, "ENV", "production") or os.environ.get("ENV", "production")
-    is_prod = str(env).strip().lower() == "production"
+    is_prod = str(env).strip().lower() in ("production", "staging")
 
     # Peer public keys
     peer_str = getattr(settings, "EVALUATOR_PEER_PUBKEYS", None) or os.environ.get("EVALUATOR_PEER_PUBKEYS")

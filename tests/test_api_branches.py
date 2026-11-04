@@ -226,3 +226,27 @@ def test_dashboard_page(client):
     assert "Kenya Agricultural Advisory Pilot" in res.text
     assert "Chart.js" in res.text or "chart.umd.min.js" in res.text
     assert "Unique Verified Farmers" in res.text
+
+
+def test_admin_auth_unset_key_fails_closed(client, monkeypatch):
+    """
+    Finding R-1: When ADMIN_KEY is None, unset, or 'None', administrative endpoints
+    must strictly fail-closed with HTTP 503 and reject 'X-Admin-Key: None' probes.
+    """
+    h = hash_phone("0722334455", PARTNER_KEY)
+
+    # 1. ADMIN_KEY is None
+    monkeypatch.setattr(settings, "ADMIN_KEY", None)
+    res_none_probe = client.get(f"/admin/lookup?hash={h}", headers={"X-Admin-Key": "None"})
+    assert res_none_probe.status_code == 503
+    assert "Admin authentication not configured" in res_none_probe.text
+
+    # 2. ADMIN_KEY is string 'None'
+    monkeypatch.setattr(settings, "ADMIN_KEY", "None")
+    res_none_str = client.get(f"/admin/lookup?hash={h}", headers={"X-Admin-Key": "None"})
+    assert res_none_str.status_code == 503
+
+    # 3. ADMIN_KEY is empty string
+    monkeypatch.setattr(settings, "ADMIN_KEY", "   ")
+    res_empty = client.get(f"/admin/lookup?hash={h}", headers={"X-Admin-Key": "None"})
+    assert res_empty.status_code == 503

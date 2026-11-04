@@ -183,7 +183,7 @@ class Settings(BaseSettings):
         if backend not in ("pure_python", "native"):
             raise ValueError(f"Invalid CURVE_BACKEND '{self.CURVE_BACKEND}'. Must be 'pure_python' or 'native'.")
 
-        if self.ENV == "production":
+        if self.ENV in ("production", "staging"):
             if backend == "native":
                 from app.crypto.voprf import _NATIVE_AVAILABLE
                 if not _NATIVE_AVAILABLE:

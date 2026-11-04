@@ -103,7 +103,8 @@ if __name__ == "__main__":
     try:
         norm = normalise_phone(args.phone)
         h = hash_phone(args.phone, args.key)
-        print(f"Normalised: {norm}")
+        masked = norm[:4] + "***" + norm[-3:] if len(norm) >= 7 else "***"
+        print(f"Normalised: {masked}")
         print(f"Hash:       {h}")
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)

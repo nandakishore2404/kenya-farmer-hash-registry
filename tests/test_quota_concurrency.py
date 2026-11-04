@@ -109,3 +109,48 @@ def test_concurrent_evaluations_respect_quota_without_overshoot(setup_test_db, m
         )
     finally:
         db.close()
+
+
+def test_postgres_quota_lock_contention_raises_503(monkeypatch):
+    """
+    Finding R-2 / E-1: When running on a non-SQLite engine (PostgreSQL),
+    if with_for_update() encounters OperationalError/DatabaseError (lock timeout, deadlock),
+    the endpoint must fail-closed with HTTP 503 rather than bypassing quota checks.
+    """
+    from sqlalchemy.exc import OperationalError
+    from app.routes.evaluator import evaluate_blinded_batch, EvaluationRequest
+    from app.models import Partner
+    from fastapi import HTTPException
+
+    db = TestingSessionLocal()
+    try:
+        class FakeDialect:
+            name = "postgresql"
+
+        monkeypatch.setattr(db.bind, "dialect", FakeDialect())
+
+        orig_query = db.query
+        def fake_query(*args, **kwargs):
+            q = orig_query(*args, **kwargs)
+            def fake_with_for_update(*a, **kw):
+                raise OperationalError("mock lock timeout", params=None, orig=Exception("timeout"))
+            q.with_for_update = fake_with_for_update
+            return q
+
+        monkeypatch.setattr(db, "query", fake_query)
+
+        partner = Partner(partner_id="test_partner_a", name="Partner A", active=1)
+        req = EvaluationRequest(
+            pilot_id="kenya-pilot",
+            key_id=EVALUATOR_KEY_ID,
+            request_id=str(uuid.uuid4()),
+            blinded_elements=["dummy"]
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            evaluate_blinded_batch(req=req, partner=partner, db=db)
+
+        assert exc_info.value.status_code == 503
+        assert "Quota lock contention, please retry" in exc_info.value.detail
+    finally:
+        db.close()

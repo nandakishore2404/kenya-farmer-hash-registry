@@ -220,3 +220,15 @@ def test_test_share_literal_burned(monkeypatch):
     monkeypatch.setenv("EVALUATOR_SHARE_K", burned_test_share)
     with pytest.raises(ValueError, match="matches a known burned"):
         Settings(_env_file=None)
+
+
+def test_staging_enforces_production_security_gates(monkeypatch):
+    """
+    Finding R-3: When ENV=staging, security gates are strictly enforced fail-closed,
+    requiring SERVER_KEY, ADMIN_KEY, non-SQLite database, and valid split-key configuration.
+    """
+    monkeypatch.setenv("ENV", "staging")
+    monkeypatch.delenv("SERVER_KEY", raising=False)
+    with pytest.raises(ValueError, match="SERVER_KEY is required"):
+        s = Settings(_env_file=None)
+        s.validate_production_security()
