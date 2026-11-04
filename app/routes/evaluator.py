@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException, Header, Depends, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import func
+from sqlalchemy.exc import OperationalError, DatabaseError
 
 from app.config import settings, BURNED_SCALAR_INTS
 from app.crypto.voprf import (
@@ -202,10 +203,16 @@ def evaluate_blinded_batch(
         partner_lock = get_partner_quota_lock(partner.partner_id)
         with partner_lock:
             # 1. Attempt row-level locking on Partner record for multi-worker Postgres deployments
-            try:
-                db.query(Partner).filter(Partner.partner_id == partner.partner_id).with_for_update().first()
-            except Exception:
-                pass
+            bind = db.get_bind() if hasattr(db, "get_bind") else getattr(db, "bind", None)
+            is_sqlite = getattr(getattr(bind, "dialect", None), "name", "") == "sqlite"
+            if not is_sqlite:
+                try:
+                    db.query(Partner).filter(Partner.partner_id == partner.partner_id).with_for_update().first()
+                except (OperationalError, DatabaseError):
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail="Quota lock contention, please retry."
+                    )
 
             quota_window_hours = getattr(settings, "PARTNER_QUOTA_WINDOW_HOURS", 24)
             daily_limit = getattr(settings, "PARTNER_DAILY_QUOTA", 10000)
