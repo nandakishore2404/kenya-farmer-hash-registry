@@ -92,3 +92,33 @@ def test_concurrent_farmer_insert_on_duplicate_hash_key_returns_200(setup_test_d
         assert farmers[0].entity_id == resolved_entity_id
     finally:
         db.close()
+
+
+def test_farmer_registration_non_hash_integrity_error_fails_closed(monkeypatch):
+    """
+    Finding D-1: Assert that any non-hash_key IntegrityError during farmer insert
+    is strictly re-raised and does NOT silently return HTTP 200 or cause data loss.
+    """
+    from sqlalchemy.exc import IntegrityError
+    from app.routes.farmers import process_farmer_registration
+
+    db = TestingSessionLocal()
+    try:
+        test_hash = "f" * 64
+        with monkeypatch.context() as m:
+            def fake_flush():
+                raise IntegrityError("mock non-hash_key failure", orig=Exception("constraint"), params=None)
+
+            m.setattr(db, "flush", fake_flush)
+
+            with pytest.raises(IntegrityError):
+                process_farmer_registration(
+                    db=db,
+                    partner_id="test_partner_a",
+                    incoming_hash=test_hash,
+                    gender="F",
+                    age_band="25-34",
+                    county_code="047"
+                )
+    finally:
+        db.close()

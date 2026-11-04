@@ -116,14 +116,25 @@ def process_farmer_registration(
                 PartnerAssociation.partner_id == partner_id
             ).first()
             if not assoc:
-                db.add(PartnerAssociation(
-                    entity_id=resolved_entity_id,
-                    partner_id=partner_id,
-                    role="contributor",
-                    first_seen=ts,
-                    last_seen=now,
-                    status="active"
-                ))
+                try:
+                    with db.begin_nested():
+                        db.add(PartnerAssociation(
+                            entity_id=resolved_entity_id,
+                            partner_id=partner_id,
+                            role="contributor",
+                            first_seen=ts,
+                            last_seen=now,
+                            status="active"
+                        ))
+                        db.flush()
+                except IntegrityError:
+                    assoc = db.query(PartnerAssociation).filter(
+                        PartnerAssociation.entity_id == resolved_entity_id,
+                        PartnerAssociation.partner_id == partner_id
+                    ).first()
+                    if assoc:
+                        assoc.last_seen = now
+                        assoc.status = "active"
             else:
                 assoc.last_seen = now
                 assoc.status = "active"
@@ -134,14 +145,25 @@ def process_farmer_registration(
             PartnerAssociation.partner_id == partner_id
         ).first()
         if not assoc:
-            db.add(PartnerAssociation(
-                entity_id=resolved_entity_id,
-                partner_id=partner_id,
-                role="contributor",
-                first_seen=ts,
-                last_seen=now,
-                status="active"
-            ))
+            try:
+                with db.begin_nested():
+                    db.add(PartnerAssociation(
+                        entity_id=resolved_entity_id,
+                        partner_id=partner_id,
+                        role="contributor",
+                        first_seen=ts,
+                        last_seen=now,
+                        status="active"
+                    ))
+                    db.flush()
+            except IntegrityError:
+                assoc = db.query(PartnerAssociation).filter(
+                    PartnerAssociation.entity_id == resolved_entity_id,
+                    PartnerAssociation.partner_id == partner_id
+                ).first()
+                if assoc:
+                    assoc.last_seen = now
+                    assoc.status = "active"
         else:
             assoc.last_seen = now
             assoc.status = "active"
@@ -186,6 +208,9 @@ def process_farmer_registration(
         except IntegrityError:
             # Race condition: another thread inserted Farmer with this hash_key concurrently
             farmer = db.query(Farmer).filter(Farmer.hash_key == hash_key).first()
+            if farmer is None:
+                # IntegrityError was not caused by duplicate hash_key - fail closed!
+                raise
 
     if farmer and not is_new_farmer:
         link = db.query(PartnerLink).filter(
@@ -216,6 +241,7 @@ def process_farmer_registration(
                 )
                 db.add(audit)
         else:
+            link_created = False
             try:
                 with db.begin_nested():
                     new_link = PartnerLink(
@@ -227,16 +253,18 @@ def process_farmer_registration(
                     )
                     db.add(new_link)
                     db.flush()
+                    link_created = True
             except IntegrityError:
                 pass
-            audit = AuditLog(
-                action="register_link_existing",
-                partner_id=partner_id,
-                farmer_id=farmer.id,
-                entity_id=resolved_entity_id,
-                at=now
-            )
-            db.add(audit)
+            if link_created:
+                audit = AuditLog(
+                    action="register_link_existing",
+                    partner_id=partner_id,
+                    farmer_id=farmer.id,
+                    entity_id=resolved_entity_id,
+                    at=now
+                )
+                db.add(audit)
     return resolved_entity_id
 
 @router.post("", response_model=StatusAcceptedResponse)
@@ -247,7 +275,7 @@ def register_farmer(
 ):
     """
     Registers or links a farmer using incoming partner hash (Legacy HMAC).
-    ALWAYS returns {"status":"accepted", "entity_id": entity_id} with HTTP 200 for valid requests.
+    ALWAYS returns {"status": "accepted"} with HTTP 200 for valid requests.
     """
     process_farmer_registration(
         db=db,
@@ -376,21 +404,32 @@ def register_farmer_voprf_token(
         ).first()
 
         if not assoc:
-            assoc = PartnerAssociation(
-                entity_id=resolved_id,
-                partner_id=partner.partner_id,
-                role=payload.role or "contributor",
-                first_seen=now,
-                last_seen=now,
-                status="active"
-            )
-            db.add(assoc)
-            db.add(AuditLog(
-                action="voprf_register_overlap",
-                partner_id=partner.partner_id,
-                entity_id=resolved_id,
-                at=now
-            ))
+            try:
+                with db.begin_nested():
+                    assoc = PartnerAssociation(
+                        entity_id=resolved_id,
+                        partner_id=partner.partner_id,
+                        role=payload.role or "contributor",
+                        first_seen=now,
+                        last_seen=now,
+                        status="active"
+                    )
+                    db.add(assoc)
+                    db.flush()
+                    db.add(AuditLog(
+                        action="voprf_register_overlap",
+                        partner_id=partner.partner_id,
+                        entity_id=resolved_id,
+                        at=now
+                    ))
+            except IntegrityError:
+                assoc = db.query(PartnerAssociation).filter(
+                    PartnerAssociation.entity_id == resolved_id,
+                    PartnerAssociation.partner_id == partner.partner_id
+                ).first()
+                if assoc:
+                    assoc.last_seen = now
+                    assoc.status = "active"
         else:
             assoc.last_seen = now
             assoc.status = "active"
