@@ -90,6 +90,18 @@ def test_threshold_evaluation_all_pairs_match_master(threshold_keys):
     # Assert all pairs yield identical token
     assert res_12.token_bytes == res_13.token_bytes == res_23.token_bytes
 
+    # B-1: Assert ThresholdEvaluationResult inherits from bytes seamlessly
+    assert isinstance(res_12, bytes)
+    assert len(res_12) == 64
+    assert res_12.hex() == baseline_token.hex()
+    assert res_12[:4] == baseline_token[:4]
+    
+    # Tuple unpacking test
+    token_unpacked, unblinded_unpacked = res_12
+    assert token_unpacked == baseline_token
+    assert isinstance(unblinded_unpacked, bytes)
+    assert len(unblinded_unpacked) in (33, 65)
+
 def test_threshold_negative_single_response_rejected(threshold_keys):
     """
     Negative Test: Supplying only 1 party response (< 2) must be rejected fail-closed.

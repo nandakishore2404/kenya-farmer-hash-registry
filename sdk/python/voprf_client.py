@@ -60,7 +60,7 @@ def normalise_kenyan_phone(phone: str) -> str:
         cleaned = "+254" + cleaned
 
     if not KENYAN_MOBILE_REGEX.fullmatch(cleaned):
-        raise InvalidPhoneError(f"Invalid Kenyan phone number format: '{phone}'")
+        raise InvalidPhoneError(f"Invalid Kenyan phone number format (length {len(cleaned)})")
     return cleaned
 
 class BaseOfflineQueue:
@@ -237,29 +237,30 @@ class OfflineStoreAndForwardQueue:
             return EphemeralStoreAndForwardQueue()
         return EncryptedStoreAndForwardQueue(db_path=db_path, encryption_key=encryption_key)
 
-class ThresholdEvaluationResult(tuple):
+class ThresholdEvaluationResult(bytes):
     """
-    Result of threshold evaluation containing (token_bytes, unblinded_element).
-    Subclasses tuple and provides convenience properties and byte-level comparison.
+    Result of threshold evaluation containing token_bytes as its byte value.
+    Inherits directly from bytes so len(res) == 64, res.hex(), slicing,
+    and byte equality match the raw token seamlessly.
+    Also supports accessing unblinded_element and tuple-style unpacking:
+    token_bytes, unblinded_element = res
     """
     def __new__(cls, token_bytes: bytes, unblinded_element: bytes):
-        return super().__new__(cls, (token_bytes, unblinded_element))
+        obj = super().__new__(cls, token_bytes)
+        obj._unblinded_element = unblinded_element
+        return obj
 
     @property
     def token_bytes(self) -> bytes:
-        return self[0]
+        return bytes(self)
 
     @property
     def unblinded_element(self) -> bytes:
-        return self[1]
+        return self._unblinded_element
 
-    def __eq__(self, other):
-        if isinstance(other, bytes):
-            return self[0] == other
-        return super().__eq__(other)
-
-    def __hash__(self):
-        return hash(self[0])
+    def __iter__(self):
+        yield bytes(self)
+        yield self._unblinded_element
 
 class OANFarmerVOPRFClient:
     """
@@ -322,7 +323,7 @@ class OANFarmerVOPRFClient:
         B: GroupElement,
         r: int,
         responses: Union[Dict[int, Tuple[bytes, bytes]], List[Tuple[int, Tuple[bytes, bytes]]]]
-    ) -> Tuple[bytes, bytes]:
+    ) -> ThresholdEvaluationResult:
         """
         Processes threshold evaluation responses from at least 2 distinct Evaluator parties (RFC 9497 Shamir 2-of-3).
         Validates DLEQ proofs against each party's published Ki, verifies consistency with aggregate K,
@@ -362,16 +363,12 @@ class OANFarmerVOPRFClient:
                 raise CryptographicVerificationError(f"Invalid party index {idx}. Must be 1, 2, or 3.")
 
         if isinstance(x, str):
-            if x.startswith("+") or any(c.isdigit() for c in x):
-                try:
-                    norm = normalise_kenyan_phone(x)
-                    x_bytes = VOPRFEngine.encode_input(self.pilot_id, norm)
-                except Exception:
-                    x_bytes = x.encode("utf-8")
-            else:
-                x_bytes = x.encode("utf-8")
-        else:
+            norm = normalise_kenyan_phone(x)
+            x_bytes = VOPRFEngine.encode_input(self.pilot_id, norm)
+        elif isinstance(x, bytes):
             x_bytes = x
+        else:
+            raise TypeError("x must be a str (phone number) or bytes (encoded input)")
 
         validated_evals: List[Tuple[int, GroupElement]] = []
         participating_keys: List[Tuple[int, GroupElement]] = []
